@@ -521,6 +521,61 @@ def register_install(
 	reason: str | None = None,
 	login: str | int | bool | None = None,
 	device_key: str | None = None,
+	device_info: str | dict | None = None,
+):
+	"""Record this device in the register, or refresh its row (see `_register_install`).
+
+	`device_info` is optional: the device's current health facts (battery, storage, memory,
+	network, locale, screen, missing native modules, ...) as a JSON object or string. They are
+	whitelisted and typed like crash-report device facts and stored on the register row, so the
+	Devices view is filled from the first launch, before any event exists. Bad values are ignored.
+	"""
+	result = _register_install(
+		install_id=install_id,
+		app=app,
+		platform=platform,
+		device_brand=device_brand,
+		device_model=device_model,
+		device_name=device_name,
+		os_version=os_version,
+		app_version=app_version,
+		runtime_version=runtime_version,
+		is_physical_device=is_physical_device,
+		reason=reason,
+		login=login,
+		device_key=device_key,
+	)
+	if device_info and isinstance(result, dict) and result.get("install_id"):
+		try:
+			from upande_mobile.api.monitor import write_device_snapshot
+
+			facts = write_device_snapshot(result["install_id"], device_info)
+			# The register row's own columns, when the plain report left them empty.
+			fill = {}
+			if facts.get("device_name") and not _text(device_name):
+				fill["device_name"] = _clip(facts["device_name"])
+			if fill:
+				frappe.db.set_value(INSTALL, result["install_id"], fill, update_modified=False)
+		except Exception:
+			# Health facts are a bonus: never fail the registration over them.
+			frappe.log_error(title="Mobile app: device_info ignored")
+	return result
+
+
+def _register_install(
+	install_id: str | None = None,
+	app: str | None = None,
+	platform: str | None = None,
+	device_brand: str | None = None,
+	device_model: str | None = None,
+	device_name: str | None = None,
+	os_version: str | None = None,
+	app_version: str | None = None,
+	runtime_version: str | None = None,
+	is_physical_device: str | int | bool | None = None,
+	reason: str | None = None,
+	login: str | int | bool | None = None,
+	device_key: str | None = None,
 ):
 	"""Record this device in the register, or refresh its row.
 

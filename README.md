@@ -33,7 +33,7 @@ answers with the headers `expo-updates` insists on (GitHub Pages cannot send the
 | Path | Method | Who | Purpose |
 |---|---|---|---|
 | `upande_mobile.api.register_app` | POST | System Manager | create or update a Mobile App |
-| `upande_mobile.api.register_install` | POST | any signed-in user | a device reports itself (launch / foreground / login) |
+| `upande_mobile.api.register_install` | POST | any signed-in user | a device reports itself (launch / foreground / login); optional `device_info` (JSON object or string of device health facts: battery, storage, memory, network, locale, screen, `missing_modules`, ...) fills the Devices view from the first launch |
 | `upande_mobile.api.installs` | GET | System Manager | the device register, with a status per device |
 | `upande_mobile.api.refresh_now` | POST | System Manager | re-read each app's latest OTA and APK now |
 | `upande_mobile.api.app_versions` | GET | any signed-in user | versions of the apps installed on this site |
@@ -71,8 +71,13 @@ text, never as HTML.
 
 `ingest` takes one form field, `payload`: JSON `{"app": "<Mobile App>", "install_id": "...",
 "events": [...]}` (at most 50 events and 512 KB per request); it answers
-`{"accepted", "dropped", "next_flush_ms"}`. Event and device fields are listed in the design
-notes of the kit.
+`{"accepted", "dropped", "next_flush_ms", "paused", "reason"}`. A signed-in device reporting for an
+app nobody has registered yet creates its Mobile App (as `register_install` does), so a first
+report that arrives before the first register is kept, not lost. `paused` is true, with a
+`reason`, when nothing was kept and the phone should back off: `monitoring_off` (the app's
+`enable_monitoring` is off) or `unknown_app` (the name is invalid or the cap on auto-created apps
+is reached). The app's `enabled` flag only governs version checks, never monitoring. A guest never
+creates an app. Event and device fields are listed in the design notes of the kit.
 
 Per **Mobile App** record: `enable_monitoring` (default on), `accept_reports_before_sign_in`
 (default off; lets a device with no session report, e.g. login failures; rate limited by IP) and

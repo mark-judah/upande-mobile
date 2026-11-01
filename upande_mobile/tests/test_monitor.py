@@ -307,13 +307,23 @@ class TestAuthAndCaps(unittest.TestCase):
 			with self.assertRaises(frappe.ValidationError):
 				mon.set_issue_status("x", "Deleted")
 
-	def _ingest(self, payload, user="Guest", app=None, rate_limited=False):
+	def _ingest(self, payload, user="Guest", app=None, rate_limited=False, created=None, ensure=None):
+		"""`app`: the Mobile App row found first; `created`: the row found after `_ensure_app` made it."""
 		db = MagicMock()
-		db.get_value.return_value = app
+		rows = [app, created if created is not None else app]
+
+		def get_value(doctype, *a, **k):
+			if doctype == mon.MOBILE_APP:
+				return rows.pop(0) if len(rows) > 1 else rows[0]
+			return ""
+
+		db.get_value.side_effect = get_value
+		self.ensure = ensure if ensure is not None else MagicMock(return_value=None)
 		session = MagicMock(user=user)
 		with (
 			patch.object(frappe, "session", session),
 			patch.object(frappe, "db", db),
+			patch.object(mon, "_ensure_app", self.ensure),
 			patch.object(mon, "_observed_ip", return_value="10.0.0.1"),
 			patch.object(mon, "_over_limit", return_value=rate_limited),
 			patch.object(mon, "now_datetime", return_value=NOW),
@@ -354,14 +364,50 @@ class TestAuthAndCaps(unittest.TestCase):
 		self.assertEqual(reply["dropped"], 7)
 		self.assertEqual(store.call_count, mon.MAX_EVENTS)
 
-	def test_unknown_or_paused_app_drops_everything_and_backs_off(self):
+	def test_unknown_app_that_cannot_be_created_is_paused_with_a_reason(self):
 		payload = json.dumps({"app": "Nope", "events": [{"message": "m"}] * 3})
-		reply, store = self._ingest(payload, "a@b.co", None)
+		reply, store = self._ingest(payload, "a@b.co", None)  # _ensure_app refuses (cap reached): returns None
 		self.assertEqual((reply["accepted"], reply["dropped"]), (0, 3))
+		self.assertEqual((reply["paused"], reply["reason"]), (True, "unknown_app"))
 		self.assertGreaterEqual(reply["next_flush_ms"], 600_000)
 		store.assert_not_called()
-		reply, _ = self._ingest(payload, "a@b.co", self._app(enable_monitoring=0))
-		self.assertEqual(reply["accepted"], 0)
+		# a name that is not a valid app name never reaches _ensure_app
+		reply, _ = self._ingest(json.dumps({"app": "<x>", "events": [{"message": "m"}]}), "a@b.co", None)
+		self.assertEqual(reply["reason"], "unknown_app")
+		self.ensure.assert_not_called()
+
+	def test_monitoring_off_pauses_with_its_reason(self):
+		payload = json.dumps({"app": "My App", "events": [{"message": "m"}] * 2})
+		reply, store = self._ingest(payload, "a@b.co", self._app(enable_monitoring=0))
+		self.assertEqual((reply["accepted"], reply["paused"], reply["reason"]), (0, True, "monitoring_off"))
+		store.assert_not_called()
+
+	def test_a_signed_in_first_report_for_a_new_app_creates_it_and_is_stored(self):
+		payload = json.dumps({"app": "Brand New", "events": [{"message": "a"}, {"message": "b"}]})
+		ensure = MagicMock(return_value="Brand New")
+		reply, store = self._ingest(payload, "a@b.co", None, created=self._app(name="Brand New", enabled=0), ensure=ensure)
+		ensure.assert_called_once_with("Brand New")
+		self.assertEqual((reply["accepted"], reply["paused"], reply["reason"]), (2, False, None))
+		self.assertEqual(store.call_count, 2)
+
+	def test_a_disabled_version_check_does_not_pause_monitoring(self):
+		# `enabled` governs version checks only; apps created on the fly start with it off.
+		payload = json.dumps({"app": "My App", "events": [{"message": "m"}]})
+		reply, store = self._ingest(payload, "a@b.co", self._app(enabled=0))
+		self.assertEqual((reply["accepted"], reply["paused"]), (1, False))
+
+	def test_a_guest_never_creates_an_app(self):
+		payload = json.dumps({"app": "Brand New", "events": [{"message": "m"}]})
+		ensure = MagicMock(return_value="Brand New")
+		with self.assertRaises(frappe.AuthenticationError):
+			self._ingest(payload, "Guest", None, ensure=ensure)
+		ensure.assert_not_called()
+
+	def test_a_race_on_creation_still_finds_the_app(self):
+		payload = json.dumps({"app": "Brand New", "events": [{"message": "m"}]})
+		ensure = MagicMock(side_effect=frappe.DuplicateEntryError("Mobile App", "Brand New", Exception()))
+		reply, _ = self._ingest(payload, "a@b.co", None, created=self._app(name="Brand New"), ensure=ensure)
+		self.assertEqual(reply["accepted"], 1)
 
 	def test_events_older_than_retention_and_bad_events_are_dropped(self):
 		old = (datetime.utcnow() - timedelta(days=40)).isoformat() + "Z"
@@ -386,6 +432,68 @@ class TestAuthAndCaps(unittest.TestCase):
 		):
 			reply = mon.ingest(payload)
 		self.assertEqual((reply["accepted"], reply["dropped"]), (1, 1))
+
+
+class TestDeviceInfoOnRegister(unittest.TestCase):
+	"""register_install(device_info=...) fills the register row's health from the first launch."""
+
+	def _call(self, device_info, core_result=None, **kw):
+		from upande_mobile.api import devices as dev
+
+		core = MagicMock(return_value=core_result or {"install_id": "row-1", "status": "unknown"})
+		writes = []
+		with (
+			patch.object(dev, "_register_install", core),
+			patch.object(mon, "_write_snapshots", side_effect=lambda snaps: writes.append(snaps)),
+			patch.object(frappe, "db", MagicMock()) as db,
+			patch.object(frappe, "log_error"),
+		):
+			result = dev.register_install(install_id="abcdef12-3456", app="My App", device_info=device_info, **kw)
+		return result, writes, core, db
+
+	def test_facts_are_cleaned_and_written_to_the_register_row(self):
+		info = {"battery_level": 0.03, "battery_state": "unplugged", "low_power_mode": True, "storage_free_bytes": 1000,
+			"storage_total_bytes": 5000, "network_type": "cellular", "os_build": "B1", "device_name": "Nord", "evil": "x",
+			"device_key": "0123456789abcdef", "install_id": "abcdef12-3456", "missing_modules": ["expo-battery"]}
+		result, writes, core, db = self._call(json.dumps(info))
+		self.assertEqual(result["install_id"], "row-1")
+		(snaps,) = writes
+		ts, device = snaps["row-1"]
+		self.assertEqual(device["battery_level"], 0.03)
+		self.assertEqual(device["storage_free_bytes"], 1000)
+		self.assertIs(device["low_power_mode"], True)
+		self.assertEqual(device["missing_modules"], ["expo-battery"])
+		self.assertNotIn("evil", device)
+		self.assertNotIn("device_key_hash", device)  # the register row already has its own key
+		self.assertNotIn("install_id", device)
+		db.set_value.assert_called_once()  # device_name filled in from the facts
+		self.assertEqual(db.set_value.call_args[0][2], {"device_name": "Nord"})
+
+	def test_a_dict_is_accepted_and_a_plain_report_still_works(self):
+		_, writes, _, _ = self._call({"battery_level": 0.5})
+		self.assertEqual(len(writes), 1)
+		_, writes, core, _ = self._call(None)
+		self.assertEqual(writes, [])
+		core.assert_called_once()
+
+	def test_malformed_device_info_is_ignored_and_never_fails_the_registration(self):
+		for bad in ("not json", "[1,2]", "7", {"junk": 1}, {}, "x" * 20000):
+			result, writes, _, _ = self._call(bad)
+			self.assertEqual(result["install_id"], "row-1")
+			self.assertEqual(writes, [], bad if isinstance(bad, dict) else str(bad)[:20])
+
+	def test_an_error_while_storing_facts_does_not_fail_registration(self):
+		from upande_mobile.api import devices as dev
+
+		with (
+			patch.object(dev, "_register_install", MagicMock(return_value={"install_id": "row-1"})),
+			patch.object(mon, "_write_snapshots", side_effect=RuntimeError("db")),
+			patch.object(frappe, "db", MagicMock()),
+			patch.object(frappe, "log_error") as log,
+		):
+			result = dev.register_install(install_id="abcdef12-3456", app="My App", device_info={"battery_level": 0.1})
+		self.assertEqual(result["install_id"], "row-1")
+		log.assert_called_once()
 
 
 if __name__ == "__main__":

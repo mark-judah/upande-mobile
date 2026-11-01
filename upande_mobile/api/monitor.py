@@ -28,11 +28,13 @@ from frappe import _
 from frappe.utils import add_days, cint, convert_utc_to_system_timezone, flt, get_datetime, now_datetime
 
 from upande_mobile.api.devices import (
+	APP_NAME_PATTERN,
 	INSTALL,
 	INSTALL_ID_PATTERN,
 	MOBILE_APP,
 	_clip,
 	_cmp,
+	_ensure_app,
 	_observed_ip,
 	_text,
 	device_key_of,
@@ -614,8 +616,53 @@ def _write_snapshots(snapshots):
 		frappe.db.set_value(INSTALL, row_name, values, update_modified=False)
 
 
-def _reply(accepted, dropped, flush_ms=DEFAULT_FLUSH_MS):
-	return {"accepted": accepted, "dropped": dropped, "next_flush_ms": flush_ms}
+def write_device_snapshot(row_name, device_info):
+	"""Store device facts sent with a register_install on that register row (same columns ingest fills).
+	Anything that is not a dict, or has no usable fact, is ignored. Returns the cleaned facts."""
+	if isinstance(device_info, str):
+		try:
+			device_info = json.loads(device_info) if len(device_info) <= 16 * 1024 else None
+		except ValueError:
+			device_info = None
+	if not isinstance(device_info, dict):
+		return {}
+	device = clean_device(device_info)
+	device.pop("install_id", None)
+	device.pop("device_key_hash", None)
+	if not device:
+		return {}
+	_write_snapshots({row_name: (datetime.utcnow(), device)})
+	return device
+
+
+def _reply(accepted, dropped, flush_ms=DEFAULT_FLUSH_MS, reason=None):
+	"""`paused` + `reason` ('monitoring_off' | 'unknown_app') say why nothing was kept; the phone backs off."""
+	return {
+		"accepted": accepted,
+		"dropped": dropped,
+		"next_flush_ms": flush_ms,
+		"paused": reason is not None,
+		"reason": reason,
+	}
+
+
+_APP_FIELDS = ["name", "enabled", "enable_monitoring", "accept_reports_before_sign_in", "event_retention_days"]
+
+
+def _monitored_app(app_name, create):
+	"""The Mobile App row for a name a device sent. A signed-in device for an app nobody has set
+	up yet creates it, as `register_install` does (so a first report that beats the first register
+	is not lost); guests never create one."""
+	if not app_name:
+		return None
+	row = frappe.db.get_value(MOBILE_APP, app_name, _APP_FIELDS, as_dict=True)
+	if row or not create or not APP_NAME_PATTERN.match(app_name):
+		return row
+	try:
+		created = _ensure_app(app_name)
+	except frappe.DuplicateEntryError:
+		created = app_name  # another request made it a moment ago
+	return frappe.db.get_value(MOBILE_APP, created, _APP_FIELDS, as_dict=True) if created else None
 
 
 @frappe.whitelist(allow_guest=True, methods=["POST"])
@@ -628,24 +675,18 @@ def ingest(payload=None):
 
 	data = _parse_payload(payload)
 	app_name = _text(data.get("app"))
-	app = (
-		frappe.db.get_value(
-			MOBILE_APP,
-			app_name,
-			["name", "enabled", "enable_monitoring", "accept_reports_before_sign_in", "event_retention_days"],
-			as_dict=True,
-		)
-		if app_name
-		else None
-	)
+	app = _monitored_app(app_name, create=not guest)
 	if guest and not (app and cint(app.accept_reports_before_sign_in)):
 		frappe.throw(_("Sign in to report."), frappe.AuthenticationError)
 
 	raw_events = data.get("events")
 	raw_events = raw_events if isinstance(raw_events, list) else []
 	total = len(raw_events)
-	if not app or not cint(app.enabled) or not cint(app.enable_monitoring):
-		return _reply(0, total, PAUSED_FLUSH_MS)
+	if not app:
+		return _reply(0, total, PAUSED_FLUSH_MS, "unknown_app")
+	# `enabled` only governs version checks; monitoring is paused by its own switch.
+	if not cint(app.enable_monitoring):
+		return _reply(0, total, PAUSED_FLUSH_MS, "monitoring_off")
 
 	now_utc = datetime.utcnow()
 	oldest = retention_cutoff(app.event_retention_days, now_utc)
