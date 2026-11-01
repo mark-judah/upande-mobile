@@ -1,7 +1,7 @@
 [project]
 name = "upande_mobile"
 authors = [
-    { name = "Upande", email = "opensource@example.com"}
+    { name = "Upande", email = "dev@upande.com"}
 ]
 description = "Device register, OTA manifest proxy and version tracking for Expo apps using @upande/mobile-kit"
 requires-python = ">=3.14"
