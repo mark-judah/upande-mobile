@@ -1,0 +1,373 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-11-01 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "issue",
+  "app",
+  "kind",
+  "level",
+  "event_id",
+  "ts",
+  "received_at",
+  "what_section",
+  "message",
+  "error_name",
+  "stack",
+  "fatal",
+  "count",
+  "screen",
+  "session_id",
+  "where_column",
+  "app_version",
+  "runtime_version",
+  "update_id",
+  "build_type",
+  "user",
+  "user_full_name",
+  "install_id",
+  "device",
+  "ip_address",
+  "device_section",
+  "platform",
+  "os_version",
+  "device_brand",
+  "device_model",
+  "battery_level",
+  "network_type",
+  "storage_free_bytes",
+  "storage_total_bytes",
+  "request_section",
+  "req_method",
+  "req_url",
+  "req_status",
+  "req_duration_ms",
+  "req_error",
+  "data_section",
+  "request",
+  "breadcrumbs",
+  "device_info",
+  "user_info",
+  "extra"
+ ],
+ "fields": [
+  {
+   "fieldname": "issue",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Issue",
+   "options": "Mobile Issue",
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "app",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "App",
+   "options": "Mobile App",
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "kind",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Kind",
+   "options": "crash\nerror\napi\nlog",
+   "read_only": 1
+  },
+  {
+   "fieldname": "level",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Level",
+   "options": "fatal\nerror\nwarning\ninfo",
+   "read_only": 1
+  },
+  {
+   "fieldname": "event_id",
+   "fieldtype": "Data",
+   "label": "Client Event Id",
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "ts",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Occurred At",
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "received_at",
+   "fieldtype": "Datetime",
+   "label": "Received At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "what_section",
+   "fieldtype": "Section Break",
+   "label": "What happened"
+  },
+  {
+   "fieldname": "message",
+   "fieldtype": "Small Text",
+   "label": "Message",
+   "read_only": 1
+  },
+  {
+   "fieldname": "error_name",
+   "fieldtype": "Data",
+   "label": "Error Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "stack",
+   "fieldtype": "Long Text",
+   "label": "Stack",
+   "read_only": 1
+  },
+  {
+   "fieldname": "fatal",
+   "fieldtype": "Check",
+   "label": "Fatal",
+   "read_only": 1
+  },
+  {
+   "fieldname": "count",
+   "fieldtype": "Int",
+   "label": "Repeat Count",
+   "read_only": 1
+  },
+  {
+   "fieldname": "screen",
+   "fieldtype": "Data",
+   "label": "Screen",
+   "read_only": 1
+  },
+  {
+   "fieldname": "session_id",
+   "fieldtype": "Data",
+   "label": "Session",
+   "read_only": 1
+  },
+  {
+   "fieldname": "where_column",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "app_version",
+   "fieldtype": "Data",
+   "in_standard_filter": 1,
+   "label": "App Version",
+   "read_only": 1
+  },
+  {
+   "fieldname": "runtime_version",
+   "fieldtype": "Data",
+   "label": "Runtime Version",
+   "read_only": 1
+  },
+  {
+   "fieldname": "update_id",
+   "fieldtype": "Data",
+   "label": "OTA Update Id",
+   "read_only": 1
+  },
+  {
+   "fieldname": "build_type",
+   "fieldtype": "Data",
+   "label": "Build Type",
+   "read_only": 1
+  },
+  {
+   "fieldname": "user",
+   "fieldtype": "Data",
+   "label": "User",
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "user_full_name",
+   "fieldtype": "Data",
+   "label": "User Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "install_id",
+   "fieldtype": "Data",
+   "label": "Install Id",
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "device",
+   "fieldtype": "Link",
+   "label": "Device",
+   "options": "Mobile App Install",
+   "read_only": 1
+  },
+  {
+   "fieldname": "ip_address",
+   "fieldtype": "Data",
+   "label": "IP Address",
+   "read_only": 1
+  },
+  {
+   "fieldname": "device_section",
+   "fieldtype": "Section Break",
+   "label": "Device"
+  },
+  {
+   "fieldname": "platform",
+   "fieldtype": "Data",
+   "label": "Platform",
+   "read_only": 1
+  },
+  {
+   "fieldname": "os_version",
+   "fieldtype": "Data",
+   "label": "OS Version",
+   "read_only": 1
+  },
+  {
+   "fieldname": "device_brand",
+   "fieldtype": "Data",
+   "label": "Brand",
+   "read_only": 1
+  },
+  {
+   "fieldname": "device_model",
+   "fieldtype": "Data",
+   "label": "Model",
+   "read_only": 1
+  },
+  {
+   "fieldname": "battery_level",
+   "fieldtype": "Float",
+   "label": "Battery Level",
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "fieldname": "network_type",
+   "fieldtype": "Data",
+   "label": "Network",
+   "read_only": 1
+  },
+  {
+   "fieldname": "storage_free_bytes",
+   "fieldtype": "Long Int",
+   "label": "Storage Free (bytes)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "storage_total_bytes",
+   "fieldtype": "Long Int",
+   "label": "Storage Total (bytes)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "request_section",
+   "fieldtype": "Section Break",
+   "label": "API request"
+  },
+  {
+   "fieldname": "req_method",
+   "fieldtype": "Data",
+   "label": "Method",
+   "read_only": 1
+  },
+  {
+   "fieldname": "req_url",
+   "fieldtype": "Small Text",
+   "label": "URL",
+   "read_only": 1
+  },
+  {
+   "fieldname": "req_status",
+   "fieldtype": "Int",
+   "label": "Status",
+   "read_only": 1
+  },
+  {
+   "fieldname": "req_duration_ms",
+   "fieldtype": "Int",
+   "label": "Duration (ms)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "req_error",
+   "fieldtype": "Small Text",
+   "label": "Request Error",
+   "read_only": 1
+  },
+  {
+   "fieldname": "data_section",
+   "fieldtype": "Section Break",
+   "label": "Details (JSON, redacted)"
+  },
+  {
+   "fieldname": "request",
+   "fieldtype": "JSON",
+   "label": "Request / Response",
+   "read_only": 1
+  },
+  {
+   "fieldname": "breadcrumbs",
+   "fieldtype": "JSON",
+   "label": "Breadcrumbs",
+   "read_only": 1
+  },
+  {
+   "fieldname": "device_info",
+   "fieldtype": "JSON",
+   "label": "Device Info",
+   "read_only": 1
+  },
+  {
+   "fieldname": "user_info",
+   "fieldtype": "JSON",
+   "label": "User Info",
+   "read_only": 1
+  },
+  {
+   "fieldname": "extra",
+   "fieldtype": "JSON",
+   "label": "Extra",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-01 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Upande Mobile",
+ "name": "Mobile Event",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 0,
+   "export": 1,
+   "print": 0,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 0,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "ts",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "message",
+ "track_changes": 0
+}

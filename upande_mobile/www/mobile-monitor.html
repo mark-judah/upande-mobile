@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="robots" content="noindex">
+  <title>Mobile Monitor</title>
+  <link rel="stylesheet" href="/assets/upande_mobile/css/mobile_monitor.css">
+</head>
+<body data-csrf="{{ csrf_token }}">
+  <header class="top">
+    <a class="brand" href="#/overview">Mobile Monitor</a>
+    <nav id="nav" aria-label="Sections">
+      <a href="#/overview" data-route="overview">Overview</a>
+      <a href="#/issues" data-route="issues">Issues</a>
+      <a href="#/devices" data-route="devices">Devices</a>
+    </nav>
+    <div class="tools">
+      <select id="app-filter" aria-label="App"><option value="">All apps</option></select>
+      <button id="theme" type="button" aria-label="Switch light and dark theme">Theme</button>
+    </div>
+  </header>
+  <main id="view" aria-live="polite"><p class="muted">Loading&hellip;</p></main>
+  <noscript><p class="pad">This page needs JavaScript.</p></noscript>
+  <script src="/assets/upande_mobile/js/mobile_monitor.js" defer></script>
+</body>
+</html>
