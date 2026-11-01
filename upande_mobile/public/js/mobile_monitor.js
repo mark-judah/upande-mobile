@@ -1,4 +1,4 @@
-/* Mobile Monitor dashboard — vanilla JS, no dependencies.
+xxx/* Mobile Monitor dashboard — vanilla JS, no dependencies.
  * Every value from the server is put on the page with textContent (via h()), never innerHTML,
  * so a hostile request body or stack trace cannot run script in an admin's session. */
 (function () {
@@ -246,7 +246,7 @@
       ['Storage free', d.storage_free_bytes != null ? bytes(d.storage_free_bytes) + ' of ' + bytes(d.storage_total_bytes) : ''], ['Memory', d.memory_total_bytes ? bytes(d.memory_total_bytes) : ''],
       ['Network', [d.network_type, d.is_connected === false ? 'not connected' : '', d.is_internet_reachable === false ? 'no internet' : '', d.carrier].filter(Boolean).join(' · ')],
       ['Screen', s.width ? s.width + '×' + s.height + ' @' + s.scale + 'x, font ' + s.font_scale : ''], ['Orientation', d.orientation], ['Locale', [d.locale, d.timezone].filter(Boolean).join(' · ')],
-      ['Theme', d.color_scheme], ['App state', d.app_state], ['JS engine', d.js_engine], ['Build', d.build_type], ['Install id', ev.install_id], ['IP seen', ev.ip_address]
+      ['Missing in this build', (d.missing_modules || []).join(', ')], ['Theme', d.color_scheme], ['App state', d.app_state], ['JS engine', d.js_engine], ['Build', d.build_type], ['Install id', ev.install_id], ['IP seen', ev.ip_address]
     ])]);
   }
   function userPanel(ev) {

@@ -163,6 +163,13 @@ def clean_device(raw):
 		clean = {k: v for k, v in clean.items() if v is not None}
 		if clean:
 			out["screen"] = clean
+	# Optional native modules the build lacks (package names), so IT can see why a device reports no battery etc.
+	missing = raw.get("missing_modules")
+	if isinstance(missing, list):
+		names = [_clip(m, 60) for m in missing[:20] if isinstance(m, str)]
+		names = [n for n in names if n and re.match(r"^[@\w./-]+$", n)]
+		if names:
+			out["missing_modules"] = names
 	install_id = _text(raw.get("install_id"))
 	if INSTALL_ID_PATTERN.match(install_id):
 		out["install_id"] = install_id

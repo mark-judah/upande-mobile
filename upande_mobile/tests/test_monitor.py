@@ -189,6 +189,12 @@ class TestCleanEvent(unittest.TestCase):
 		self.assertEqual(d["screen"], {"width": 1080.0, "height": 2400.0, "scale": 2.6, "font_scale": 1.0})
 		self.assertNotIn("install_id", mon.clean_device({"install_id": "bad id!"}))
 
+	def test_missing_modules_kept_and_sanitised(self):
+		d = mon.clean_device({"missing_modules": ["expo-battery", "@react-native-async-storage/async-storage", "<script>", 7]})
+		self.assertEqual(d["missing_modules"], ["expo-battery", "@react-native-async-storage/async-storage"])
+		self.assertNotIn("missing_modules", mon.clean_device({"missing_modules": "expo-battery"}))
+		self.assertEqual(len(mon.clean_device({"missing_modules": ["x" * 200]})["missing_modules"][0]), 60)
+
 	def test_helpers(self):
 		self.assertEqual(mon.os_major("Android 14"), 14)
 		self.assertEqual(mon.os_major("17.2.1"), 17)
