@@ -189,6 +189,22 @@ class TestCleanEvent(unittest.TestCase):
 		self.assertEqual(d["screen"], {"width": 1080.0, "height": 2400.0, "scale": 2.6, "font_scale": 1.0})
 		self.assertNotIn("install_id", mon.clean_device({"install_id": "bad id!"}))
 
+	def test_network_facts_kept_typed_and_clamped(self):
+		d = mon.clean_device(
+			{
+				"wifi_ssid": "KarenFarm-5G", "wifi_signal_pct": 71, "wifi_link_mbps": "433", "wifi_frequency_mhz": 5180,
+				"latency_ms": 85.6, "api_calls": 42, "api_avg_ms": 310, "api_p95_ms": 1200, "api_error_pct": 250,
+				"cellular_generation": "4g", "bogus_speed": 1,
+			}
+		)
+		self.assertEqual(d["wifi_ssid"], "KarenFarm-5G")
+		self.assertEqual((d["wifi_link_mbps"], d["wifi_frequency_mhz"], d["latency_ms"]), (433, 5180, 85))
+		self.assertEqual((d["api_calls"], d["api_avg_ms"], d["api_p95_ms"]), (42, 310, 1200))
+		self.assertEqual(d["api_error_pct"], 100)  # clamped
+		self.assertEqual(d["cellular_generation"], "4g")
+		self.assertNotIn("bogus_speed", d)
+		self.assertNotIn("api_error_pct", mon.clean_device({"api_error_pct": ""}))
+
 	def test_missing_modules_kept_and_sanitised(self):
 		d = mon.clean_device({"missing_modules": ["expo-battery", "@react-native-async-storage/async-storage", "<script>", 7]})
 		self.assertEqual(d["missing_modules"], ["expo-battery", "@react-native-async-storage/async-storage"])

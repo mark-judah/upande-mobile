@@ -247,6 +247,22 @@
       h('p', { class: 'muted' }, 'Secrets are removed before storage; copied cURL keeps the placeholders.')]);
   }
 
+  // Connection details a device reported: Wi-Fi name, signal, link speed and band; round trip to the server; how long its calls take.
+  function wifiText(d) {
+    return [d.wifi_ssid, d.wifi_signal_pct != null ? d.wifi_signal_pct + '% signal' : '', d.wifi_link_mbps != null ? d.wifi_link_mbps + ' Mbps' : '',
+      d.wifi_frequency_mhz != null ? (d.wifi_frequency_mhz >= 4900 ? '5 GHz' : '2.4 GHz') : '', d.cellular_generation ? d.cellular_generation.toUpperCase() : ''].filter(Boolean).join(' · ');
+  }
+  function apiText(d) {
+    if (d.api_avg_ms == null) return '';
+    return 'avg ' + d.api_avg_ms + ' ms · p95 ' + d.api_p95_ms + ' ms · ' + (d.api_error_pct || 0) + '% failed (last ' + Math.min(d.api_calls || 0, 100) + ' calls)';
+  }
+  function connCell(r) {
+    var s = r.snapshot || {};
+    if (!r.snapshot_at) return '—';
+    var top = [s.wifi_ssid || r.connectivity || r.network_type, s.latency_ms != null ? s.latency_ms + ' ms' : ''].filter(Boolean).join(' · ');
+    return h('div', {}, [top || '—', s.api_avg_ms != null ? h('div', { class: 'sub' }, 'API avg ' + s.api_avg_ms + ' ms') : null]);
+  }
+
   function devicePanel(ev) {
     var d = ev.device_info || {}, s = d.screen || {};
     return card('Device', [kv([
@@ -255,6 +271,7 @@
       ['Battery', d.battery_level != null ? pct(d.battery_level) + (d.battery_state ? ' · ' + d.battery_state : '') + (d.low_power_mode ? ' · low power mode' : '') : ''],
       ['Storage free', d.storage_free_bytes != null ? bytes(d.storage_free_bytes) + ' of ' + bytes(d.storage_total_bytes) : ''], ['Memory', d.memory_total_bytes ? bytes(d.memory_total_bytes) : ''],
       ['Network', [d.network_type, d.is_connected === false ? 'not connected' : '', d.is_internet_reachable === false ? 'no internet' : '', d.carrier].filter(Boolean).join(' · ')],
+      ['Wi-Fi', wifiText(d)], ['Server latency', d.latency_ms != null ? d.latency_ms + ' ms' : ''], ['API response time', apiText(d)],
       ['Screen', s.width ? s.width + '×' + s.height + ' @' + s.scale + 'x, font ' + s.font_scale : ''], ['Orientation', d.orientation], ['Locale', [d.locale, d.timezone].filter(Boolean).join(' · ')],
       ['Missing in this build', (d.missing_modules || []).join(', ')], ['Theme', d.color_scheme], ['App state', d.app_state], ['JS engine', d.js_engine], ['Build', d.build_type], ['Install id', ev.install_id], ['IP seen', ev.ip_address]
     ])]);
@@ -328,7 +345,7 @@
         return h('button', { class: f.health === t[0] ? 'on' : '', type: 'button', onclick: function () { go('devices', { health: t[0], search: f.search }); } }, t[1]);
       }));
       var table = d.rows.length ? h('div', { class: 'table-wrap' }, h('table', {}, [
-        h('thead', {}, h('tr', {}, ['Device', 'User', 'OS', 'App', 'Battery', 'Storage free', 'Network', 'Last seen', 'Health'].map(function (t) { return h('th', {}, t); }))),
+        h('thead', {}, h('tr', {}, ['Device', 'User', 'OS', 'App', 'Battery', 'Storage free', 'Connection', 'Last seen', 'Health'].map(function (t) { return h('th', {}, t); }))),
         h('tbody', {}, d.rows.map(function (r) {
           return h('tr', {}, [
             h('td', {}, [h('a', { class: 'title', href: '#/device/' + encodeURIComponent(r.install_id) }, [r.device_brand, r.device_model].filter(Boolean).join(' ') || r.device_name || r.install_id.slice(0, 8)), h('div', { class: 'sub' }, appLink(r.app))]),
@@ -337,7 +354,7 @@
             h('td', {}, [r.app_version || '—', h('div', { class: 'sub' }, r.status || '')]),
             h('td', { title: r.snapshot_at ? 'Reported ' + full(r.snapshot_at) : 'No health report yet' }, r.snapshot_at ? pct(r.battery_level) : '—'),
             h('td', {}, r.snapshot_at ? bytes(r.storage_free_bytes) : '—'),
-            h('td', {}, r.snapshot_at ? (r.connectivity || r.network_type || '—') : '—'),
+            h('td', {}, connCell(r)),
             h('td', { title: full(r.last_seen) }, when(r.last_seen)),
             h('td', {}, r.flags.length ? h('div', { class: 'flags' }, r.flags.map(function (k) { return badge(FLAG_TEXT[k], 'warn'); })) : badge('OK', 'ok'))
           ]);
@@ -359,7 +376,7 @@
         dev ? h('div', { class: 'grid two' }, [
           card('Last known state', [kv([['User', dev.full_name || dev.user], ['App', [appLink(dev.app), ' ' + (dev.app_version || '')]], ['Register status', dev.status], ['OS', [dev.platform, dev.os_version].join(' ')], ['Last seen', full(dev.last_seen)],
             ['Battery', dev.snapshot_at ? pct(dev.battery_level) + (snap.battery_state ? ' · ' + snap.battery_state : '') : ''], ['Storage free', dev.snapshot_at ? bytes(dev.storage_free_bytes) + ' of ' + bytes(dev.storage_total_bytes) : ''],
-            ['Network', [dev.network_type, dev.connectivity].filter(Boolean).join(' · ')], ['Snapshot', full(dev.snapshot_at)], ['Install id', dev.install_id]]),
+            ['Network', [dev.network_type, dev.connectivity].filter(Boolean).join(' · ')], ['Wi-Fi', wifiText(snap)], ['Server latency', snap.latency_ms != null ? snap.latency_ms + ' ms' : ''], ['API response time', apiText(snap)], ['Snapshot', full(dev.snapshot_at)], ['Install id', dev.install_id]]),
             dev.flags.length ? h('div', { class: 'flags', style: 'margin-top:8px' }, dev.flags.map(function (k) { return badge(FLAG_TEXT[k], 'warn'); })) : null]),
           card('Reported device facts', h('pre', { class: 'code' }, pretty(snap) || 'No health report yet.'))
         ]) : h('p', { class: 'muted' }, 'This device is not in the register (events only).'),

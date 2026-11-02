@@ -101,10 +101,14 @@ MAX_PAGE = 200
 
 _STR_FACTS = (
 	"platform", "os_version", "os_build", "brand", "model", "device_name", "battery_state", "network_type",
-	"carrier", "locale", "timezone", "orientation", "app_state", "color_scheme", "js_engine", "build_type",
+	"carrier", "wifi_ssid", "cellular_generation", "locale", "timezone", "orientation", "app_state", "color_scheme", "js_engine", "build_type",
 )
 _BOOL_FACTS = ("is_physical_device", "low_power_mode", "is_connected", "is_internet_reachable")
-_INT_FACTS = ("storage_free_bytes", "storage_total_bytes", "memory_total_bytes")
+_INT_FACTS = (
+	"storage_free_bytes", "storage_total_bytes", "memory_total_bytes",
+	# the link and how long this app's calls take over it
+	"wifi_signal_pct", "wifi_link_mbps", "wifi_frequency_mhz", "latency_ms", "api_calls", "api_avg_ms", "api_p95_ms",
+)
 
 
 # --------------------------------------------------------------------------- #
@@ -167,6 +171,9 @@ def clean_device(raw):
 	battery = _num(raw.get("battery_level"), 0, 1)
 	if battery is not None and raw.get("battery_level") not in ("", None):
 		out["battery_level"] = round(battery, 3)
+	error_pct = _num(raw.get("api_error_pct"), 0, 100)
+	if error_pct is not None and raw.get("api_error_pct") not in ("", None):
+		out["api_error_pct"] = round(error_pct, 1)
 	for key in _INT_FACTS:
 		value = _num(raw.get(key), 0, 1e15)
 		if value is not None:

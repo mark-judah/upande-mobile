@@ -29,7 +29,7 @@ The kit adds two pages inside each Expo app, and this backend feeds them:
 - **Settings** (`/mobile-kit/settings`, for every user): versions, **Check for updates**, a fingerprint unlock switch, the crash-report switch, and the versions of the apps on this site (the kit reads Frappe's own `frappe.utils.change_log.get_versions` by default; `upande_mobile.api.app_versions` is the same data behind a sign-in, selectable with the kit's `endpoints.versions` setting).
 - **Devices** (`/mobile-kit/devices`, System Managers only): the device register for that app, read from `upande_mobile.api.installs`. Each device shows its name, OS, app version, last seen, the accounts that used it, and a status (`current`, `behind_ota`, `needs_apk`, `ahead`, `dormant`, `unknown`) with the update it needs. Tap a device for its sign-ins, launches, first seen, IP and install id.
 
-The in-app Devices page is about versions. Battery, storage, network and each device's crash history are in the [web portal](#the-web-portal). How the pages look and behave is described in the [kit README](https://github.com/mark-judah/upande-mobile-kit#the-settings-page).
+The in-app Devices page is about versions. Battery, storage, network (Wi-Fi name, signal and speed when the app has netinfo, latency to the site, and how long the app's own API calls take: average, 95th percentile, share failed) and each device's crash history are in the [web portal](#the-web-portal). How the pages look and behave is described in the [kit README](https://github.com/mark-judah/upande-mobile-kit#the-settings-page).
 
 ## Requirements
 
