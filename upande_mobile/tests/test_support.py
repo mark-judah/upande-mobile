@@ -161,6 +161,27 @@ class TestIssueThreads(unittest.TestCase):
 		self.assertEqual(none["preview"], "60cm shows as 80cm")
 
 
+	def test_status_history_starts_with_the_filing_then_each_status_change_in_order(self):
+		versions = [
+			{"name": "V2", "creation": "2026-11-02 10:00:00", "data": '{"changed": [["status", "Replied", "Resolved"]]}'},
+			{"name": "V1", "creation": "2026-11-02 09:30:00", "data": '{"changed": [["status", "Open", "Replied"], ["priority", "Low", "High"]]}'},
+			{"name": "V3", "creation": "2026-11-02 10:05:00", "data": "not json"},
+			{"name": "V4", "creation": "2026-11-02 10:06:00", "data": '{"changed": [["subject", "a", "b"]]}'},
+		]
+		ev = sup.status_events(self.issue, versions)
+		self.assertEqual([(e["kind"], e["status"]) for e in ev], [("created", "Open"), ("status", "Replied"), ("status", "Resolved")])
+		self.assertEqual(ev[2]["previous"], "Replied")
+		self.assertEqual(ev[1]["sent_at"], "2026-11-02 09:30:00")
+		self.assertEqual(len(sup.status_events(self.issue, None)), 1)
+
+	def test_status_words(self):
+		self.assertEqual(sup.status_words("Replied"), "Replied")
+		self.assertEqual(sup.status_words("Resolved", "Replied"), "Marked resolved")
+		self.assertEqual(sup.status_words("Open", "Resolved"), "Reopened")
+		self.assertEqual(sup.status_words("Open", None), "Opened")
+		self.assertEqual(sup.status_words("Waiting"), "Status changed to Waiting")
+
+
 class _Base(unittest.TestCase):
 	def setUp(self):
 		translate = patch.object(sup, "_", side_effect=lambda m: m)

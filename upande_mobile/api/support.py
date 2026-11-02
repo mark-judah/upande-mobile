@@ -211,6 +211,37 @@ def thread_messages(issue, comments, user, email):
 	return out
 
 
+STATUS_WORDS = {
+	"Open": "Reopened",
+	"Replied": "Replied",
+	"Resolved": "Marked resolved",
+	"Closed": "Closed",
+	"On Hold": "Put on hold",
+}
+
+
+def status_events(issue, versions):
+	"""The conversation's status history, oldest first: how it was filed, then each change of `status` recorded in
+	the Issue's Version documents. `kind` is "created" or "status"; a status event carries `status` and `previous`."""
+	out = [{"id": f"{issue.get('name')}-created", "kind": "created", "status": "Open", "previous": None, "label": "Report sent", "sent_at": str(issue.get("creation") or "")}]
+	for v in sorted(versions or [], key=lambda r: str(r.get("creation") or "")):
+		try:
+			data = json.loads(v.get("data") or "{}")
+		except ValueError:
+			continue
+		for change in data.get("changed") or []:
+			if isinstance(change, (list, tuple)) and len(change) >= 3 and change[0] == "status" and change[2]:
+				out.append({"id": f"{v.get('name')}-status", "kind": "status", "status": str(change[2]), "previous": change[1] or None, "label": status_words(str(change[2]), change[1] or None), "sent_at": str(v.get("creation") or "")})
+	return out
+
+
+def status_words(status, previous=None):
+	"""A status change in plain words: "Replied" is "Replied", back to Open after Resolved is "Reopened"."""
+	if status == "Open" and previous in (None, "", "Open"):
+		return "Opened"
+	return STATUS_WORDS.get(status) or f"Status changed to {status}"
+
+
 def thread_summary(issue, comments, user, email):
 	"""One row of the person's thread list: status, newest activity, and when support last answered."""
 	staff = [c for c in comments if not is_own_issue(c.get("comment_email"), user, email) and plain_text(c.get("content"))]
@@ -411,13 +442,27 @@ def threads(app=None):
 
 @frappe.whitelist(methods=["GET"])
 def thread(issue):
-	"""One conversation, oldest first."""
+	"""One conversation, oldest first: `messages` are the words, `events` the status history (created, then each status change)."""
 	user = _signed_in()
 	doc, email = _own_issue(issue, user)
 	comments = _issue_comments([doc.name]).get(doc.name, [])
+	versions = frappe.get_all(
+		"Version",
+		filters={"ref_doctype": ISSUE, "docname": doc.name},
+		fields=["name", "creation", "data"],
+		order_by="creation asc",
+		limit_page_length=0,
+	)
 	return {
-		"thread": {"id": doc.name, "subject": split_issue_subject(doc.subject)[1], "status": doc.status},
+		"thread": {
+			"id": doc.name,
+			"subject": split_issue_subject(doc.subject)[1],
+			"status": doc.status,
+			"created": str(doc.creation or ""),
+			"has_screenshot": bool(_files_for(ISSUE, [doc.name]).get(doc.name)),
+		},
 		"messages": thread_messages(doc.as_dict(), comments, user, email),
+		"events": status_events(doc.as_dict(), versions),
 	}
 
 
