@@ -28,6 +28,7 @@ import frappe
 from frappe import _
 from frappe.utils import cint, now_datetime
 
+from upande_mobile import push
 from upande_mobile.api.devices import APP_NAME_PATTERN, INSTALL_ID_PATTERN, _clip, _text
 from upande_mobile.api.monitor import _monitored_app, _over_limit, clean_device
 from upande_mobile.redaction import redact_text, redact_url
@@ -37,6 +38,7 @@ ISSUE = "Issue"
 ISSUE_STATUSES = ("Open", "Replied", "On Hold", "Resolved", "Closed")
 DIAG_DIVIDER = "\u2014 \u2014 \u2014 Diagnostic details (attached automatically) \u2014 \u2014 \u2014"
 THREAD = "Mobile Chat Thread"
+PUSH = "Mobile Push Token"
 MESSAGE = "Mobile Chat Message"
 
 MAX_SUBJECT = 140
@@ -437,6 +439,48 @@ def reply(issue, text=None):
 	return {"id": comment.name, "from_staff": False, "text": message, "sent_at": str(comment.creation)}
 
 
+@frappe.whitelist(methods=["POST"])
+def register_push(app=None, token=None, install_id=None, platform=None):
+	"""A phone offers its Expo push token so support replies can reach it. Filed under the session user; a token that
+	moved to another person (a handed-over phone) follows its new owner."""
+	user = _signed_in()
+	app_name = _app_row(app)
+	clean = push.clean_token(token)
+	if not clean:
+		frappe.throw(_("That is not an Expo push token."), frappe.ValidationError)
+	if _over_limit("push", user, 20, 3600):
+		frappe.throw(_("Too many requests. Try again later."), frappe.TooManyRequestsError)
+	install_id = _text(install_id)
+	values = {
+		"app": app_name,
+		"user": user,
+		"platform": _clip(platform, 20),
+		"install_id": install_id if INSTALL_ID_PATTERN.match(install_id) else "",
+		"registered_at": now_datetime(),
+		"last_error": "",
+	}
+	existing = frappe.db.get_value(PUSH, {"token": clean}, "name")
+	if existing:
+		frappe.db.set_value(PUSH, existing, values, update_modified=False)
+	else:
+		frappe.get_doc(dict(values, doctype=PUSH, token=clean)).insert(ignore_permissions=True)
+	# Keep a person's newest few devices per app; older tokens are stale.
+	stale = frappe.get_all(PUSH, filters={"app": app_name, "user": user}, pluck="name", order_by="registered_at desc", limit_start=push.MAX_TOKENS_PER_USER_APP, limit_page_length=0)
+	for name in stale:
+		frappe.delete_doc(PUSH, name, ignore_permissions=True, force=True)
+	return {"registered": True}
+
+
+@frappe.whitelist(methods=["POST"])
+def unregister_push(token=None):
+	"""Forget this phone's token (notifications turned off, or the person signed out). Only the person's own."""
+	user = _signed_in()
+	clean = push.clean_token(token)
+	if clean:
+		frappe.db.delete(PUSH, {"token": clean, "user": user})
+	return {"registered": False}
+
+
 @frappe.whitelist(methods=["GET", "POST"])
 def chat(app=None, text=None, since=None, count_only=None):
 	"""The person's conversation with support. POST sends `text`; GET returns messages (after `since`) and marks the
@@ -653,4 +697,8 @@ def chat_reply(thread, text=None):
 		frappe.throw(_("Write a message first."), frappe.ValidationError)
 	if not frappe.db.exists(THREAD, thread):
 		frappe.throw(_("Unknown conversation."), frappe.DoesNotExistError)
-	return message_row(_add_message(thread, frappe.session.user, message, True).as_dict())
+	row = message_row(_add_message(thread, frappe.session.user, message, True).as_dict())
+	head = frappe.db.get_value(THREAD, thread, ["app", "user"], as_dict=True)
+	if head:
+		push.notify_user(head.app, head.user, "Reply from support", message, {"kind": "support-reply", "thread": thread})
+	return row

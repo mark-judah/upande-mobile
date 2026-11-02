@@ -31,6 +31,7 @@ Every feature name links to its section.
 | Feature | What it does |
 |---|---|
 | [Problem reports](#problem-reports) | "Report a problem" from the app, filed as an Issue (with the screenshot attached) where the site has one: device facts, the last requests and the last crash |
+| [Push notifications](#push-notifications) | A push to the person's phone when support comments on their Issue |
 | [Chat with support](#chat-with-support) | The person's conversations with your team: their Issues, answered with a Comment on the Issue in Desk |
 
 **Operations**
@@ -226,9 +227,20 @@ Limits: 10 reports per user per hour; subject 140 characters, details 5000; diag
 - `threads` lists the signed-in person's Issues whose subject starts with `[App Name]` (newest first, 30), with the status, the newest activity, when support last answered, and a preview. `thread` returns one conversation: what the person wrote (read back from the description), then every **Comment** on the Issue, each marked from support or from the person. `reply` adds the person's answer as a Comment on the Issue; an Issue that was *Replied* or *Resolved* goes back to *Open*, and a *Closed* one refuses (the person starts a new one).
 - **Support replies the way they already do: a Comment on the Issue in Desk.** Only Comments appear in the app (an email reply or an internal note does not). The portal's Chat tab explains this instead of listing threads.
 - A person can only read and answer **their own** Issues (`raised_by` is their user or email); anything else is a permission error. Limits: 60 messages per user per hour, 2000 characters each.
-- Replies are not pushed to the phone. Harvest sends an Expo push from a DocType Event on Comment (tokens kept in a custom field on User); doing that here would need `expo-notifications` in the app, so it is left out for now.
+- Replies reach the phone as [push notifications](#push-notifications).
 
 **On a site without the Issue doctype** the old single-thread chat is used: one **Mobile Chat Thread** per person per app holding **Mobile Chat Message** rows, answered from the portal's Chat tab (`chat`, `chat_threads`, `chat_thread`, `chat_reply`). The app learns which mode applies from `threads` (`mode: "issue"` or `"chat"`).
+
+### Push notifications
+
+A reply is pushed to the person's phone the moment support comments.
+
+- **Tokens.** The app calls `register_push` with its Expo push token; it is stored in **Mobile Push Token** (one row per token, filed under the signed-in user and the app, `System Manager` access only). A token that moves to another person (a handed-over phone) follows its new owner, a person keeps their newest 5 devices per app, and `unregister_push` removes the caller's own token (the app does this on sign-out). 20 registrations per user per hour.
+- **The trigger.** A `doc_events` hook on **Comment** (`after_insert`) queues `upande_mobile.push.notify_issue_reply` on the `short` queue, so saving the comment never waits for the push. The job sends only when the Comment is a real comment (not an attachment or info entry) on an Issue whose subject starts with `[App]` of a registered Mobile App, written by someone other than the person who raised it, with some text. The person is found from the Issue's `raised_by`. On a site without Issue, a reply from the portal's Chat tab pushes the same way.
+- **The message.** Title `Reply on <subject>`, body `<who>: <start of the reply>` (120 characters), channel `support`, high priority, and a small data payload (`upande_mobile: support`, the Issue id, the app) the kit uses to open the conversation when tapped.
+- **Only Expo is contacted**: `https://exp.host/--/api/v2/push/send`, from a fixed constant. Tokens Expo answers `DeviceNotRegistered` for are deleted. A failed push is logged ("Mobile push: send failed") and never breaks the reply.
+- **Turn it off** with `"upande_mobile_push": 0` in `site_config.json`.
+- **If an app already sends its own push on Issue comments** (Harvest has a Server Script that does), disable that script once the app registers tokens with the kit, or people get two notifications.
 
 ### How it is protected
 
@@ -281,6 +293,8 @@ All paths are under `/api/method/`.
 | `upande_mobile.api.support.threads` (`app`) | GET | signed-in user | The person's conversations with support (their Issues for the app) and the chat `mode` |
 | `upande_mobile.api.support.thread` (`issue`) | GET | signed-in user | One conversation: their words, then the Comments on the Issue |
 | `upande_mobile.api.support.reply` (`issue`, `text`) | POST | signed-in user | The person answers on their Issue (adds a Comment). 60 per hour |
+| `upande_mobile.api.support.register_push` (`app`, `token`, `install_id`, `platform`) | POST | signed-in user | Offer this phone's Expo push token for support replies. 20 per hour |
+| `upande_mobile.api.support.unregister_push` (`token`) | POST | signed-in user | Forget the caller's own token |
 | `upande_mobile.api.support.chat` | GET / POST | signed-in user | The single-thread chat for sites without an Issue doctype. `GET` returns messages (and marks replies read), `?count_only=1` the unread count; `POST` sends `text` |
 | `upande_mobile.api.support.reports`, `report`, `set_report_status`, `chat_threads`, `chat_thread`, `chat_reply` | GET / POST | System Manager | The portal's Support page |
 | `upande_mobile.api.monitor.set_issue_status`, `purge_now` | POST | System Manager | Resolve or ignore an issue; delete expired events now |
@@ -295,6 +309,7 @@ All optional, in `site_config.json`.
 | `upande_mobile_runtime_major_base` | The `runtimeMajorBase` your apps set in `expo.extra.mobileKit` (default 0). Needed to rate devices correctly when an app uses an offset |
 | `upande_mobile_github_token` | A GitHub token for reading releases and workflow runs, to avoid the unauthenticated rate limit (60 per hour per IP). Read-only is enough. The older name `mobile_app_github_token` is still read when this one is not set |
 | `upande_mobile_support_doctype` | Where problem reports go: `"Issue"` or `"Mobile Report"`. Default: Issue when the site has it, else Mobile Report |
+| `upande_mobile_push` | `0` turns support-reply push notifications off. Default on |
 | `upande_mobile_redact_keys` | Extra field names to redact in reports (a list or a comma-separated string) |
 | `upande_mobile_min_os` | What counts as an old OS, for example `{"android": 11, "ios": 17}` (defaults 10 and 16) |
 
@@ -304,7 +319,7 @@ All optional, in `site_config.json`.
 - Redaction works by name and by shape. A secret with another name, in free text, can still be stored. Crash data can contain personal data (screen names, ids in URLs). Turn monitoring off per app, shorten retention, or add redact keys to fit your policy.
 - Bodies are capped (16 KB hard limit) and binary or multipart bodies are replaced by a size note.
 - Reports are filed under the session user and the IP address the server saw. A name or role claimed in the payload is ignored.
-- Only System Managers can read the register, issues, events and the dashboard. Mobile App, Mobile App Install, Mobile Issue, Mobile Event, Mobile Report, Mobile Chat Thread and Mobile Chat Message grant access to System Manager only (Mobile App Install User is a child table of the install).
+- Only System Managers can read the register, issues, events and the dashboard. Mobile App, Mobile App Install, Mobile Issue, Mobile Event, Mobile Report, Mobile Chat Thread, Mobile Chat Message and Mobile Push Token grant access to System Manager only (Mobile App Install User is a child table of the install).
 - **GitHub is read by the server only.** The only host requested is `api.github.com`, over https, for a repo that passed the `owner/repo` check; a redirect is followed only within that host. The token (if set) goes only to that host, is never sent to a browser or a phone, and is removed from any error text that is stored. Release notes are never treated as HTML, and every link in them or in the cached data is checked again when the page is built.
 - **Fetches are restricted.** The OTA Base URL and the GitHub repo are fetched by the hourly job and, for the OTA URL, by the public manifest endpoint. They are validated in `register_app`, on every save of a Mobile App and again at fetch time, so an edited record cannot point the server at an internal host.
 
@@ -336,6 +351,7 @@ bench restart
 | Reports are answered with 429 | Rate limit | Wait a minute; phones back off by themselves |
 | A report is not an Issue | The site has no Issue doctype (no ERPNext or Helpdesk), or `upande_mobile_support_doctype` is `"Mobile Report"` | Install ERPNext/Helpdesk, or remove the setting |
 | An Issue is missing from the Support page | Its subject does not start with `[App Name]` of a registered app | Issues the app files always do; edit the subject, or register the app |
+| No push arrives | The app has not registered a token (the person did not turn notifications on, or the build lacks `expo-notifications`), the queue worker is not running, the comment was not a plain Comment, or the Issue subject has no `[App]` prefix | Check **Mobile Push Token** for the user; run a worker (`bench worker --queue short`); read the Error Log for "Mobile push" |
 | The person does not see a reply | The reply was an email or an internal note, not a **Comment** on the Issue | Add a Comment on the Issue in Desk |
 | "Report a problem" or chat fails with a 404 or an unknown doctype error | The backend was updated without `bench migrate`, or is older than 0.2.0 | Update the app and run `bench --site your.site migrate`, then `bench restart` |
 | A problem report has no screenshot | The phone sent none (the kit needs `react-native-view-shot`), or it was not a JPEG or over 1.5 MB | Install `react-native-view-shot` in the app and make a new native build |
@@ -350,7 +366,7 @@ cd apps/upande_mobile
 ../../env/bin/python -W ignore -m unittest discover -s upande_mobile/tests -t .
 ```
 
-Layout: `upande_mobile/api/` (endpoints: `apps.py`, `devices.py`, `monitor.py`, `ota.py`, `support.py`), `github.py` (reading GitHub and release notes), `redaction.py`, `fingerprint.py`, `validation.py`, the eight doctypes in `upande_mobile/upande_mobile/doctype/` (Mobile App, Mobile App Install, Mobile App Install User, Mobile Issue, Mobile Event, Mobile Report, Mobile Chat Thread, Mobile Chat Message), the dashboard page in `upande_mobile/www/mobile-monitor.html` and `upande_mobile/public/`.
+Layout: `upande_mobile/api/` (endpoints: `apps.py`, `devices.py`, `monitor.py`, `ota.py`, `support.py`, and `push.py` beside them), `github.py` (reading GitHub and release notes), `redaction.py`, `fingerprint.py`, `validation.py`, the nine doctypes in `upande_mobile/upande_mobile/doctype/` (Mobile App, Mobile App Install, Mobile App Install User, Mobile Issue, Mobile Event, Mobile Report, Mobile Chat Thread, Mobile Chat Message, Mobile Push Token), the dashboard page in `upande_mobile/www/mobile-monitor.html` and `upande_mobile/public/`.
 
 ## License
 
