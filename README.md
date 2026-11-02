@@ -1,35 +1,45 @@
 # Upande Mobile
 
-The Frappe backend for [`@upande/mobile-kit`](https://github.com/mark-judah/upande-mobile-kit), a Settings page and update toolkit for Expo apps.
+The Frappe backend for [`@upande/mobile-kit`](https://github.com/mark-judah/upande-mobile-kit), a Settings page and update toolkit for Expo apps. One install serves any number of apps; adding an app is one command, not a code change.
 
-It gives every app that uses the kit:
+**Jump to:** [Features](#features) · [Install](#install) · [Register an app](#register-an-app) · [Endpoints](#endpoints) · [Site settings](#site-settings) · [Troubleshooting](#troubleshooting)
 
-- **OTA updates.** Your site serves the update manifest that `expo-updates` needs. The bundles themselves live on GitHub Pages.
-- **A device register.** Which phones run which build of which app, and which are behind.
-- **Crash and API monitoring.** Errors, failed requests (with headers, payload and response), device details and the signed-in user, grouped into issues on a dashboard at `/mobile-monitor`.
+## Features
 
-One install serves any number of apps. Adding an app is one command, not a code change.
+Every feature name links to its section.
 
-## The web portal
+**Updates and versions**
 
-The app ships a web portal for IT admins and developers: **`https://your.site/mobile-monitor`**.
+| Feature | What it does |
+|---|---|
+| [OTA manifest proxy](#how-ota-works) | Serves the update manifest `expo-updates` needs; the bundles themselves live on GitHub Pages |
+| [App registration](#register-an-app) | One command or one Desk record per app |
+| [Device register](#device-register) | Which phones run which build of which app, and which are behind |
+| [Version reporting](#version-reporting) | This backend's own version, shown in each app's Settings, and the kit version each device runs |
 
-- **Who can open it:** System Managers. Open the address in a browser while signed in to your Frappe site. If you are signed out you are sent to the login page and back; any other user gets a permission error. There is no Desk menu entry, so bookmark the address.
-- **What it gives you:**
-  - an overview of events per day, top issues, app versions, device models and OS versions in use, and fleet health;
-  - every crash, error and failed API request grouped into issues, each with the stack, the request and response (headers and payload, with secrets removed), breadcrumbs, the device (OS, model, battery, storage, network, versions) and the signed-in user;
-  - a Devices view of every registered phone, with filters for low battery, low storage, offline, old OS and old app;
-  - an [App page](#app-page) for each app: the current version, how many devices have it, what is new in it (the release notes from GitHub) and what is going on in its repository.
-- **Before it works:** run `bench build --app upande_mobile` once after installing (the page loads its CSS and JavaScript from `/assets/upande_mobile/`), and have an app registered and sending reports. See [Monitoring dashboard](#monitoring-dashboard) for the details.
+**Monitoring**
 
-## In the app: Settings and Devices
+| Feature | What it does |
+|---|---|
+| [Web portal](#the-web-portal) | One place for issues, devices, apps and support, at `/mobile-monitor` |
+| [Crash and API monitoring](#monitoring) | Errors and failed requests with headers, payload and response, grouped into issues |
+| [Network and performance](#network-and-performance) | Wi-Fi, latency and how long each device's API calls take |
+| [App page](#app-page) | Per app: current version, adoption, release notes and GitHub activity |
 
-The kit adds two pages inside each Expo app, and this backend feeds them:
+**Support**
 
-- **Settings** (`/mobile-kit/settings`, for every user): versions, **Check for updates**, a fingerprint unlock switch, the crash-report switch, and the versions of the apps on this site (the kit reads Frappe's own `frappe.utils.change_log.get_versions` by default; `upande_mobile.api.app_versions` is the same data behind a sign-in, selectable with the kit's `endpoints.versions` setting).
-- **Devices** (`/mobile-kit/devices`, System Managers only): the device register for that app, read from `upande_mobile.api.installs`. Each device shows its name, OS, app version, last seen, the accounts that used it, and a status (`current`, `behind_ota`, `needs_apk`, `ahead`, `dormant`, `unknown`) with the update it needs. Tap a device for its sign-ins, launches, first seen, IP and install id.
+| Feature | What it does |
+|---|---|
+| [Problem reports](#problem-reports) | "Report a problem" from the app: a screenshot, device facts, the last requests and the last crash |
+| [Chat with support](#chat-with-support) | A conversation between a person and your team, answered from the portal |
 
-The in-app Devices page is about versions. Battery, storage, network (Wi-Fi name, signal and speed when the app has netinfo, latency to the site, and how long the app's own API calls take: average, 95th percentile, share failed) and each device's crash history are in the [web portal](#the-web-portal). How the pages look and behave is described in the [kit README](https://github.com/mark-judah/upande-mobile-kit#the-settings-page).
+**Operations**
+
+| Feature | What it does |
+|---|---|
+| [Endpoints](#endpoints) | Every whitelisted method, who may call it |
+| [Site settings](#site-settings) | Optional `site_config.json` keys |
+| [Privacy and security](#privacy-and-security) | Redaction, who can read what, restricted fetches |
 
 ## Requirements
 
@@ -88,26 +98,19 @@ Open the **Mobile App** list (System Manager only) and create or edit a record:
 
 **The OTA Base URL is fetched by your server**, so it is restricted: `https` only; no credentials, port, query or fragment; a real host name (no IP addresses); and the host must be `<owner>.github.io`, `raw.githubusercontent.com`, or listed in `upande_mobile_ota_hosts` in `site_config.json`. The repo must look like `owner/repo`.
 
-## Endpoints
+## In the app
 
-All paths are under `/api/method/`.
+The kit adds pages and tools inside each Expo app, and this backend feeds them. How they look and behave is in the [kit README](https://github.com/mark-judah/upande-mobile-kit#readme).
 
-| Path | Method | Who | Purpose |
-|---|---|---|---|
-| `upande_mobile.api.ota.manifest?app=<name>` | GET | anyone | The `expo-updates` manifest for the caller's runtime |
-| `upande_mobile.api.register_install` | POST | signed-in user | A device reports itself (on launch, sign-in, returning to the app). Optional `device_info` carries battery, storage, memory, network, locale and similar facts |
-| `upande_mobile.api.installs` | GET | System Manager | The device register with a status per device |
-| `upande_mobile.api.register_app` | POST | System Manager | Create or update a Mobile App |
-| `upande_mobile.api.refresh_now` | POST | System Manager | Re-read every enabled app's latest OTA and APK now (runs in the background) |
-| `upande_mobile.api.app_versions` | GET | signed-in user | Versions of the apps installed on this site |
-| `upande_mobile.api.monitor.ingest` | POST | signed-in user (guests only if the app allows it) | A batch of crash and API events |
-| `upande_mobile.api.monitor.overview`, `issues`, `issue`, `events`, `devices` | GET | System Manager | Dashboard data |
-| `upande_mobile.api.monitor.app_overview?app=<name>` | GET | System Manager | Everything the [App page](#app-page) shows, in one call |
-| `upande_mobile.api.monitor.refresh_app` (`app`) | POST | System Manager | Re-read one app's latest OTA, APK and GitHub data now. At most once a minute per app; inside that minute it answers `{refreshed: false, retry_in}` |
-| `upande_mobile.api.support.submit_report` | POST | signed-in user | "Report a problem": subject, details, a base64 JPEG `screenshot` (at most 1.5 MB), `diagnostics` JSON. 10 per hour per user. Creates a *Mobile Report* |
-| `upande_mobile.api.support.chat` | GET / POST | signed-in user | The person's conversation with support. `GET` returns messages (and marks replies read), `?count_only=1` returns the unread count; `POST` sends `text`. 60 messages per hour |
-| `upande_mobile.api.support.reports`, `report`, `set_report_status`, `chat_threads`, `chat_thread`, `chat_reply` | GET / POST | System Manager | The portal's Support page |
-| `upande_mobile.api.monitor.set_issue_status`, `purge_now` | POST | System Manager | Resolve or ignore an issue; delete expired events now |
+| In the app | Served by |
+|---|---|
+| **Settings** (`/mobile-kit/settings`, for every user): versions, **Check for updates**, fingerprint switch, crash-report switch, the versions of the apps on this site | Frappe's own `frappe.utils.change_log.get_versions` by default; `upande_mobile.api.app_versions` is the same data behind a sign-in (set the kit's `endpoints.versions`) |
+| **Devices** (`/mobile-kit/devices`, System Managers only): each device's name, OS, app version, last seen, accounts and a status with the update it needs | `upande_mobile.api.installs` |
+| **Report a problem** and **Chat with support** (the Help card) | [`upande_mobile.api.support`](#support) |
+| **Device reports** on launch, sign-in and foreground | `upande_mobile.api.register_install` |
+| **Crash and API reports** | `upande_mobile.api.monitor.ingest` |
+
+The in-app Devices page is about versions. Battery, storage, network and each device's crash history are in the [web portal](#the-web-portal).
 
 ## How OTA works
 
@@ -147,36 +150,74 @@ The hourly job (`upande_mobile.api.devices.refresh_latest`) reads each enabled a
 | `dormant` | Not seen for the app's dormant days |
 | `unknown` | The app is not registered and enabled, or no latest version is known yet (for example before the first hourly check) |
 
-## Monitoring dashboard
+## Version reporting
 
-The portal is at **`https://your.site/mobile-monitor`**. Open it in a browser while signed in as a System Manager. A guest is sent to the login page; any other user gets a permission error. The app selector at the top filters every view to one app.
+- **This backend's version** is `__version__` in `upande_mobile/__init__.py`. Frappe exposes it through `frappe.utils.change_log.get_versions`, so each app's Settings shows it as **Upande Mobile Kit (server)** next to the Frappe and ERPNext versions ("not installed" on a site without this app).
+- **The kit version each device runs** is reported with its device snapshot (`kit_version`) and shown as "Mobile Kit" on the Device page and in event device panels, so you can see which phones are on an old kit.
+
+## The web portal
+
+**`https://your.site/mobile-monitor`**, for IT admins and developers.
+
+- **Who can open it:** System Managers. Open the address in a browser while signed in to your Frappe site. If you are signed out you are sent to the login page and back; any other user gets a permission error. There is no Desk menu entry, so bookmark the address.
+- **Before it works:** run `bench build --app upande_mobile` once after installing (the page loads its CSS and JavaScript from `/assets/upande_mobile/`), and have an app registered and sending reports.
+- **The app selector** at the top filters every view to one app. Everything from a device is shown as plain text, never as HTML.
 
 | View | Shows |
 |---|---|
 | Overview | Events per day, top issues, breakdown by app version, model and OS, fleet health counts |
 | Issues | Grouped problems. Filter by app, status, kind, level, version, and search |
 | Issue detail | Stack, request and response viewer with Copy as cURL, breadcrumbs, device and user panels, and Resolve or Ignore |
-| Devices | Health of every registered device, with filters for low battery, low storage, offline, old OS and old app |
-| Device | One device's timeline |
+| Devices | Health of every registered device, with filters for low battery, low storage, offline, old OS and old app, and a **Connection** column (Wi-Fi, latency, API response time) |
+| Device | One device's timeline: last known state, Wi-Fi and kit version, and its events |
 | App | One app's page: version, adoption, release notes, GitHub activity. See [App page](#app-page) |
+| Support | Problem reports and chat. See [Support](#support) |
 
-Everything from a device is shown as plain text, never as HTML.
+## Monitoring
 
-**Issues.** Events with the same error are grouped into one **Mobile Issue**. Messages and URLs are normalised first (ids, numbers and hashes removed), so "Item ITM-0042 not found" and "Item ITM-0043 not found" are one issue. An issue is Open, Resolved or Ignored. A resolved issue reopens when it happens again on a newer app version. A runaway loop stops writing event rows after 200 per issue per day and only counts.
+### Issues
 
-**Health.** Low battery is under 20%. Low storage is under 512 MB free or under 10% free. Old OS is below Android 10 or iOS 16 by default (change with `upande_mobile_min_os`). Old app is a device with status `behind_ota` or `needs_apk`.
+Events with the same error are grouped into one **Mobile Issue**. Messages and URLs are normalised first (ids, numbers and hashes removed), so "Item ITM-0042 not found" and "Item ITM-0043 not found" are one issue. An issue is Open, Resolved or Ignored. A resolved issue reopens when it happens again on a newer app version. A runaway loop stops writing event rows after 200 per issue per day and only counts.
 
-**Retention.** A daily job at 02:30 deletes events older than each app's Event Retention (default 30 days). Issues are kept. Delete now with `upande_mobile.api.monitor.purge_now`, optionally with `days` and `app`.
+### Health
 
-**Limits on reports.** `ingest` accepts up to 50 events and 512 KB per request, and answers `{accepted, dropped, next_flush_ms, paused, reason}`. Rate limits per minute: 30 per user and 120 per IP, or 20 per IP for guests; beyond that it answers 429. A signed-in device reporting for an unregistered app creates it as a disabled Mobile App, so the first report is kept. A guest never creates an app. `paused` is true with `reason: monitoring_off` when the app's Enable Monitoring is off, or `reason: unknown_app` when the name is invalid or the cap of 20 auto-created apps is reached. The app's Enabled flag does not affect monitoring.
+Low battery is under 20%. Low storage is under 512 MB free or under 10% free. Old OS is below Android 10 or iOS 16 by default (change with `upande_mobile_min_os`). Old app is a device with status `behind_ota` or `needs_apk`.
+
+### Network and performance
+
+Each device's latest report carries, in its stored snapshot, how the network treats the app: connection type, **latency to the site** (a tiny `GET /api/method/ping` the phone makes at most once a minute), **how long its own API calls take** (count, average and 95th percentile in milliseconds, share failed, over its last 100 calls) and, when the app has `@react-native-community/netinfo`, the **Wi-Fi name, signal, link speed and band** and the cellular generation. The Devices view shows them in the Connection column; the Device page and every event's device panel show the full set. All values are whitelisted, typed and range-checked before they are stored, and none of them adds a column to the register: they live in the device snapshot.
+
+### Retention
+
+A daily job at 02:30 deletes events older than each app's Event Retention (default 30 days). Issues are kept. Delete now with `upande_mobile.api.monitor.purge_now`, optionally with `days` and `app`.
+
+### Limits on reports
+
+`ingest` accepts up to 50 events and 512 KB per request, and answers `{accepted, dropped, next_flush_ms, paused, reason}`. Rate limits per minute: 30 per user and 120 per IP, or 20 per IP for guests; beyond that it answers 429. A signed-in device reporting for an unregistered app creates it as a disabled Mobile App, so the first report is kept. A guest never creates an app. `paused` is true with `reason: monitoring_off` when the app's Enable Monitoring is off, or `reason: unknown_app` when the name is invalid or the cap of 20 auto-created apps is reached. The app's Enabled flag does not affect monitoring.
 
 ## Support
 
-Problem reports and chat from the app's **Help** card, in the portal under **Support** (`/mobile-monitor#/support`).
+Problem reports and chat from the app's **Help** card, in the portal under **Support** (`/mobile-monitor#/support`). They need the doctypes below, so run `bench --site your.site migrate` after installing or upgrading.
 
-- **Reports** are *Mobile Report* records: subject, details, reporter, app, version, device, a private screenshot, and the diagnostics the phone attached (device facts, Wi-Fi and latency, the last requests with secrets removed, the last crash). Set the status to Open, In Progress or Resolved.
-- **Chat** is one *Mobile Chat Thread* per person per app with *Mobile Chat Message* rows. Replies from the portal show in the app within seconds. Unread counts show on the threads.
-- Everything a phone sends is size-capped and cleaned on the server (the same device whitelist and redaction as crash reports); the screenshot must be a real JPEG. Run `bench --site <site> migrate` after updating to create the three doctypes.
+### Problem reports
+
+A report is a **Mobile Report** (named `MREP-00001`, System Manager access only):
+
+- the subject and details the person wrote, the reporter, the app, the app and runtime versions, the device and the OS;
+- a **private screenshot** of the screen they were on, attached as a File (shown in the report; it must be a real JPEG of at most 1.5 MB, anything else is dropped and the report is still kept);
+- the **diagnostics** the phone attached: whitelisted device facts (including Wi-Fi and latency), the last 15 requests (addresses and status only, redacted), and **the last crash** (message, stack, whether it was fatal, the screen).
+
+Set the status to **Open**, **In Progress** or **Resolved** on the report's page. Limits: 10 reports per user per hour; subject 140 characters, details 5000; diagnostics 64 KB.
+
+### Chat with support
+
+One **Mobile Chat Thread** per person per app, holding **Mobile Chat Message** rows. The person's messages count as unread for support; replies sent from the portal show in the app within seconds and count as unread for the person until the app fetches them. The portal's chat list shows unread counts, newest conversation first. Limits: 60 messages per user per hour, 2000 characters each.
+
+### How it is protected
+
+- Only signed-in users can submit or chat, and every row is filed under the session user, never one claimed in the request.
+- Diagnostics pass the same device whitelist and redaction as crash reports; free text in the details is redacted for token-shaped text.
+- Reports, threads and messages are readable by System Managers only.
 
 ## App page
 
@@ -203,15 +244,26 @@ Problem reports and chat from the app's **Help** card, in the portal under **Sup
 - When GitHub cannot be reached, answers with an error or says the limit is used up, the page keeps the last data it has and shows **GitHub unreachable (showing data from ...)** with the reason. The OTA and APK data are not affected by this.
 - A private repository, or one that does not exist, answers 404 and the page says so.
 
-## Privacy and security
+## Endpoints
 
-- **Secrets are redacted again on the server**, even though the phone already did it. Any header, query or body field whose name contains `token`, `secret`, `password`, `passwd`, `pwd`, `apikey`, `authorization`, `cookie`, `credential`, `csrf`, `session`, `privatekey` or `signature`, or has a word such as `sid`, `otp`, `pin`, `cvv`, `cvc`, `card`, `auth`, `usr`, `passcode` or `ssn`, is replaced with `[redacted]`. So is credential-shaped text: Bearer and Basic values, `token key:secret`, and JWTs. Add field names with `upande_mobile_redact_keys`.
-- Redaction works by name and by shape. A secret with another name, in free text, can still be stored. Crash data can contain personal data (screen names, ids in URLs). Turn monitoring off per app, shorten retention, or add redact keys to fit your policy.
-- Bodies are capped (16 KB hard limit) and binary or multipart bodies are replaced by a size note.
-- Reports are filed under the session user and the IP address the server saw. A name or role claimed in the payload is ignored.
-- Only System Managers can read the register, issues, events and the dashboard. Mobile App, Mobile App Install, Mobile Issue and Mobile Event grant access to System Manager only (Mobile App Install User is a child table of the install).
-- **GitHub is read by the server only.** The only host requested is `api.github.com`, over https, for a repo that passed the `owner/repo` check; a redirect is followed only within that host. The token (if set) goes only to that host, is never sent to a browser or a phone, and is removed from any error text that is stored. Release notes are never treated as HTML, and every link in them or in the cached data is checked again when the page is built.
-- **Fetches are restricted.** The OTA Base URL and the GitHub repo are fetched by the hourly job and, for the OTA URL, by the public manifest endpoint. They are validated in `register_app`, on every save of a Mobile App and again at fetch time, so an edited record cannot point the server at an internal host.
+All paths are under `/api/method/`.
+
+| Path | Method | Who | Purpose |
+|---|---|---|---|
+| `upande_mobile.api.ota.manifest?app=<name>` | GET | anyone | The `expo-updates` manifest for the caller's runtime |
+| `upande_mobile.api.register_install` | POST | signed-in user | A device reports itself (on launch, sign-in, returning to the app). Optional `device_info` carries battery, storage, memory, network, locale and similar facts |
+| `upande_mobile.api.installs` | GET | System Manager | The device register with a status per device |
+| `upande_mobile.api.register_app` | POST | System Manager | Create or update a Mobile App |
+| `upande_mobile.api.refresh_now` | POST | System Manager | Re-read every enabled app's latest OTA and APK now (runs in the background) |
+| `upande_mobile.api.app_versions` | GET | signed-in user | Versions of the apps installed on this site |
+| `upande_mobile.api.monitor.ingest` | POST | signed-in user (guests only if the app allows it) | A batch of crash and API events |
+| `upande_mobile.api.monitor.overview`, `issues`, `issue`, `events`, `devices` | GET | System Manager | Dashboard data |
+| `upande_mobile.api.monitor.app_overview?app=<name>` | GET | System Manager | Everything the [App page](#app-page) shows, in one call |
+| `upande_mobile.api.monitor.refresh_app` (`app`) | POST | System Manager | Re-read one app's latest OTA, APK and GitHub data now. At most once a minute per app; inside that minute it answers `{refreshed: false, retry_in}` |
+| `upande_mobile.api.support.submit_report` | POST | signed-in user | "Report a problem": subject, details, a base64 JPEG `screenshot` (at most 1.5 MB), `diagnostics` JSON. 10 per hour per user. Creates a *Mobile Report* |
+| `upande_mobile.api.support.chat` | GET / POST | signed-in user | The person's conversation with support. `GET` returns messages (and marks replies read), `?count_only=1` returns the unread count; `POST` sends `text`. 60 messages per hour |
+| `upande_mobile.api.support.reports`, `report`, `set_report_status`, `chat_threads`, `chat_thread`, `chat_reply` | GET / POST | System Manager | The portal's Support page |
+| `upande_mobile.api.monitor.set_issue_status`, `purge_now` | POST | System Manager | Resolve or ignore an issue; delete expired events now |
 
 ## Site settings
 
@@ -225,11 +277,21 @@ All optional, in `site_config.json`.
 | `upande_mobile_redact_keys` | Extra field names to redact in reports (a list or a comma-separated string) |
 | `upande_mobile_min_os` | What counts as an old OS, for example `{"android": 11, "ios": 17}` (defaults 10 and 16) |
 
+## Privacy and security
+
+- **Secrets are redacted again on the server**, even though the phone already did it. Any header, query or body field whose name contains `token`, `secret`, `password`, `passwd`, `pwd`, `apikey`, `authorization`, `cookie`, `credential`, `csrf`, `session`, `privatekey` or `signature`, or has a word such as `sid`, `otp`, `pin`, `cvv`, `cvc`, `card`, `auth`, `usr`, `passcode` or `ssn`, is replaced with `[redacted]`. So is credential-shaped text: Bearer and Basic values, `token key:secret`, and JWTs. Add field names with `upande_mobile_redact_keys`.
+- Redaction works by name and by shape. A secret with another name, in free text, can still be stored. Crash data can contain personal data (screen names, ids in URLs). Turn monitoring off per app, shorten retention, or add redact keys to fit your policy.
+- Bodies are capped (16 KB hard limit) and binary or multipart bodies are replaced by a size note.
+- Reports are filed under the session user and the IP address the server saw. A name or role claimed in the payload is ignored.
+- Only System Managers can read the register, issues, events and the dashboard. Mobile App, Mobile App Install, Mobile Issue, Mobile Event, Mobile Report, Mobile Chat Thread and Mobile Chat Message grant access to System Manager only (Mobile App Install User is a child table of the install).
+- **GitHub is read by the server only.** The only host requested is `api.github.com`, over https, for a repo that passed the `owner/repo` check; a redirect is followed only within that host. The token (if set) goes only to that host, is never sent to a browser or a phone, and is removed from any error text that is stored. Release notes are never treated as HTML, and every link in them or in the cached data is checked again when the page is built.
+- **Fetches are restricted.** The OTA Base URL and the GitHub repo are fetched by the hourly job and, for the OTA URL, by the public manifest endpoint. They are validated in `register_app`, on every save of a Mobile App and again at fetch time, so an edited record cannot point the server at an internal host.
+
 ## Upgrade
 
 ```bash
 cd apps/upande_mobile && git pull && cd ../..
-bench --site your.site migrate
+bench --site your.site migrate   # creates new doctypes, for example the support ones
 bench build --app upande_mobile
 bench restart
 ```
@@ -251,6 +313,9 @@ bench restart
 | Reports are answered with `paused: true` | `monitoring_off`: Enable Monitoring is off. `unknown_app`: an invalid name, or 20 disabled auto-created apps already exist | Turn Enable Monitoring on; register the app or delete unused disabled ones |
 | Reports from before sign-in are refused | Guests are rejected unless the app allows them | Turn on Accept Reports Before Sign-in for that app |
 | Reports are answered with 429 | Rate limit | Wait a minute; phones back off by themselves |
+| "Report a problem" or chat fails with a 404 or an unknown doctype error | The backend was updated without `bench migrate`, or is older than 0.2.0 | Update the app and run `bench --site your.site migrate`, then `bench restart` |
+| A problem report has no screenshot | The phone sent none (the kit needs `react-native-view-shot`), or it was not a JPEG or over 1.5 MB | Install `react-native-view-shot` in the app and make a new native build |
+| Support page is empty | Nobody has reported or written in yet, or the app selector filters to another app | Choose **All apps** |
 
 ## Development
 
@@ -261,7 +326,7 @@ cd apps/upande_mobile
 ../../env/bin/python -W ignore -m unittest discover -s upande_mobile/tests -t .
 ```
 
-Layout: `upande_mobile/api/` (endpoints: `apps.py`, `devices.py`, `monitor.py`, `ota.py`), `github.py` (reading GitHub and release notes), `redaction.py`, `fingerprint.py`, `validation.py`, the five doctypes in `upande_mobile/upande_mobile/doctype/`, the dashboard page in `upande_mobile/www/mobile-monitor.html` and `upande_mobile/public/`.
+Layout: `upande_mobile/api/` (endpoints: `apps.py`, `devices.py`, `monitor.py`, `ota.py`, `support.py`), `github.py` (reading GitHub and release notes), `redaction.py`, `fingerprint.py`, `validation.py`, the eight doctypes in `upande_mobile/upande_mobile/doctype/` (Mobile App, Mobile App Install, Mobile App Install User, Mobile Issue, Mobile Event, Mobile Report, Mobile Chat Thread, Mobile Chat Message), the dashboard page in `upande_mobile/www/mobile-monitor.html` and `upande_mobile/public/`.
 
 ## License
 
