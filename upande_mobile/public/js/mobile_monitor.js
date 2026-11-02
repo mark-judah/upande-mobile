@@ -1,4 +1,4 @@
-xxx/* Mobile Monitor dashboard — vanilla JS, no dependencies.
+/* Mobile Monitor dashboard — vanilla JS, no dependencies.
  * Every value from the server is put on the page with textContent (via h()), never innerHTML,
  * so a hostile request body or stack trace cannot run script in an admin's session. */
 (function () {
