@@ -21,6 +21,15 @@ The app ships a web portal for IT admins and developers: **`https://your.site/mo
   - a Devices view of every registered phone, with filters for low battery, low storage, offline, old OS and old app.
 - **Before it works:** run `bench build --app upande_mobile` once after installing (the page loads its CSS and JavaScript from `/assets/upande_mobile/`), and have an app registered and sending reports. See [Monitoring dashboard](#monitoring-dashboard) for the details.
 
+## In the app: Settings and Devices
+
+The kit adds two pages inside each Expo app, and this backend feeds them:
+
+- **Settings** (`/mobile-kit/settings`, for every user): versions, **Check for updates**, a fingerprint unlock switch, the crash-report switch, and the versions of the apps on this site (the kit reads Frappe's own `frappe.utils.change_log.get_versions` by default; `upande_mobile.api.app_versions` is the same data behind a sign-in, selectable with the kit's `endpoints.versions` setting).
+- **Devices** (`/mobile-kit/devices`, System Managers only): the device register for that app, read from `upande_mobile.api.installs`. Each device shows its name, OS, app version, last seen, the accounts that used it, and a status (`current`, `behind_ota`, `needs_apk`, `ahead`, `dormant`, `unknown`) with the update it needs. Tap a device for its sign-ins, launches, first seen, IP and install id.
+
+The in-app Devices page is about versions. Battery, storage, network and each device's crash history are in the [web portal](#the-web-portal). How the pages look and behave is described in the [kit README](https://github.com/mark-judah/upande-mobile-kit#the-settings-page).
+
 ## Requirements
 
 - Frappe 16 (this app declares Python 3.14, which is what Frappe 16 requires).
