@@ -10,6 +10,8 @@
 #   events            GET   raw events, or one with `name`     (System Manager)
 #   devices           GET   fleet health from the last reports (System Manager)
 #   set_issue_status  POST  Open / Resolved / Ignored          (System Manager)
+#   app_overview      GET   one app's page: version, adoption, releases, GitHub runs (System Manager)
+#   refresh_app       POST  re-read one app's OTA / APK / GitHub data now, 60 s cooldown (System Manager)
 #   purge_now         POST  delete expired events now          (System Manager)
 #
 # Built to be cheap for the app and the server: one batched POST, every value
@@ -20,26 +22,36 @@
 # the client claims.
 
 import json
+import math
 import re
+import time
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlsplit
 
 import frappe
 from frappe import _
 from frappe.utils import add_days, cint, convert_utc_to_system_timezone, flt, get_datetime, now_datetime
 
+from upande_mobile import github
 from upande_mobile.api.devices import (
 	APP_NAME_PATTERN,
 	INSTALL,
 	INSTALL_ID_PATTERN,
+	INSTALL_USER,
 	MOBILE_APP,
 	_clip,
 	_cmp,
 	_ensure_app,
 	_observed_ip,
+	_refresh_app,
 	_text,
+	_ts,
 	device_key_of,
+	parse_runtime,
 	parse_version,
+	recompute_statuses,
 )
+from upande_mobile.validation import is_safe_base_url
 from upande_mobile.fingerprint import fingerprint
 from upande_mobile.redaction import redact_body, redact_headers, redact_text, redact_url, redact_value
 
@@ -1027,6 +1039,347 @@ def set_issue_status(name, status, resolved_in_version=None):
 	frappe.db.set_value(ISSUE, current.name, values)
 	frappe.db.commit()
 	return {"name": current.name, **{k: (str(v) if v is not None else None) for k, v in values.items()}}
+
+
+# --------------------------------------------------------------------------- #
+# per-app page
+# --------------------------------------------------------------------------- #
+
+APP_PAGE_DAYS = 14
+BEHIND_LIMIT = 10
+OPEN_ISSUE_LIMIT = 5
+REFRESH_COOLDOWN_SECONDS = 60
+
+
+def _percent(part, whole):
+	return round(100.0 * part / whole, 1) if whole else 0.0
+
+
+def version_distribution(rows, latest_version=None):
+	"""Adoption numbers from (app_version, runtime_version, status, devices) rows. Pure.
+
+	`on_latest` counts devices whose version equals `latest_version` (v-prefix and
+	suffix ignored); `by_version` lists every version newest first (unreadable ones last)
+	with its share of all devices. A dormant device still counts as a device, but
+	`on_latest_percent_active` leaves dormant ones out of both sides.
+	"""
+	latest = parse_version(latest_version)
+	versions, runtimes, statuses = {}, {}, {}
+	total = on_latest = on_latest_active = dormant = 0
+	for version, runtime, status, count in rows:
+		count = cint(count)
+		if count <= 0:
+			continue
+		version, runtime, status = _text(version), _text(runtime), _text(status) or "unknown"
+		versions[version] = versions.get(version, 0) + count
+		runtimes[runtime] = runtimes.get(runtime, 0) + count
+		statuses[status] = statuses.get(status, 0) + count
+		total += count
+		if status == "dormant":
+			dormant += count
+		if latest and parse_version(version) == latest:
+			on_latest += count
+			if status != "dormant":
+				on_latest_active += count
+	active = total - dormant
+
+	def version_key(item):
+		parsed = parse_version(item[0])
+		return (1, parsed) if parsed else (0, (0, 0, 0))
+
+	def runtime_key(item):
+		parsed = parse_runtime(item[0])
+		return (1, parsed) if parsed else (0, (0, 0))
+
+	by_version = [
+		{"version": v, "devices": n, "percent": _percent(n, total), "latest": bool(latest and parse_version(v) == latest)}
+		for v, n in sorted(sorted(versions.items()), key=version_key, reverse=True)
+	]
+	by_runtime = [{"runtime": r, "devices": n, "percent": _percent(n, total)} for r, n in sorted(sorted(runtimes.items()), key=runtime_key, reverse=True)]
+	return {
+		"total": total,
+		"active": active,
+		"on_latest": on_latest,
+		"on_latest_percent": _percent(on_latest, total),
+		"on_latest_percent_active": _percent(on_latest_active, active),
+		"by_version": by_version,
+		"by_runtime": by_runtime,
+		"by_status": statuses,
+	}
+
+
+def version_summary(latest_version, latest_runtime, latest_apk_version):
+	"""'OTA 1.2.7 on runtime 1.2; newest APK 1.2.0' — what the stored latest numbers mean."""
+	parts = []
+	if _text(latest_version):
+		parts.append(f"OTA {_text(latest_version)}" + (f" on runtime {_text(latest_runtime)}" if _text(latest_runtime) else ""))
+	if _text(latest_apk_version):
+		parts.append(f"newest APK {_text(latest_apk_version)}")
+	return "; ".join(parts) or "No published version found yet"
+
+
+def _newest_version(*versions):
+	known = [v for v in (_text(v) for v in versions) if parse_version(v)]
+	return max(known, key=parse_version) if known else ""
+
+
+def _pages_url(ota_base_url):
+	"""The Pages site an OTA base URL lives on: https://<owner>.github.io/<repo>/ for a Pages URL."""
+	base = _text(ota_base_url)
+	if not base or not is_safe_base_url(base):
+		return ""
+	parts = urlsplit(base)
+	if (parts.hostname or "").endswith(".github.io"):
+		first = parts.path.strip("/").split("/")[0]
+		return f"https://{parts.hostname}/{first}/" if first else f"https://{parts.hostname}/"
+	return base
+
+
+def _github_view(row, latest_version):
+	"""Releases (with safe note blocks) and Actions runs from the cached blob. No raw GitHub text leaves here."""
+	repo = _text(row.get("github_repo"))
+	data = github.load_data(row.get("github_data")) if repo else {}
+	latest = parse_version(latest_version)
+	releases = []
+	for raw in (data.get("releases") or [])[: github.MAX_RELEASES]:
+		if not isinstance(raw, dict) or not _text(raw.get("tag")):
+			continue
+		has_apk = bool(raw.get("has_apk"))
+		releases.append(
+			{
+				"tag": _text(raw.get("tag")),
+				"version": _text(raw.get("version")),
+				"name": _text(raw.get("name")),
+				"published_at": _text(raw.get("published_at")),
+				"url": github.safe_github_url(raw.get("url"), repo, f"https://github.com/{repo}/releases"),
+				"has_apk": has_apk,
+				"kind": "apk" if has_apk else "ota",
+				"apk_size": raw.get("apk_size") if isinstance(raw.get("apk_size"), int) else None,
+				"notes": github.notes_to_blocks(raw.get("body")),
+				"latest": bool(latest) and parse_version(raw.get("version")) == latest,
+			}
+		)
+	runs = []
+	for raw in (data.get("runs") or [])[: github.MAX_RUNS]:
+		if not isinstance(raw, dict) or not isinstance(raw.get("id"), int):
+			continue
+		run = github.normalize_run(raw, repo) if repo else None
+		if run:
+			runs.append(run)
+	error = _text(row.get("github_error"))
+	fetched = _ts(data.get("fetched_at"))
+	return {
+		"repo_set": bool(repo),
+		"checked_at": _ts(row.get("github_checked_at")),
+		"fetched_at": fetched,
+		"error": error,
+		"stale": bool(error and fetched),
+		"releases": releases,
+		"runs": runs,
+		# the release for the version devices should be on, or else the newest one
+		"whats_new": next((r["tag"] for r in releases if r["latest"]), releases[0]["tag"] if releases else ""),
+		"whats_new_exact": any(r["latest"] for r in releases),
+	}
+
+
+def _event_series(app, days):
+	since = add_days(now_datetime(), -days)
+	by_day = {}
+	for r in frappe.db.sql(
+		f"SELECT DATE(ts) AS day, kind, COUNT(*) AS n FROM `tab{EVENT}` WHERE app = %s AND ts >= %s GROUP BY DATE(ts), kind",  # noqa: S608
+		(app, since),
+		as_dict=True,
+	):
+		by_day.setdefault(str(r.day), {})[r.kind] = cint(r.n)
+	series = []
+	for i in range(days - 1, -1, -1):
+		day = str(add_days(now_datetime(), -i).date())
+		counts = by_day.get(day, {})
+		series.append({"day": day, **{k: counts.get(k, 0) for k in KINDS}})
+	return series
+
+
+def _open_issues(app, days, limit=OPEN_ISSUE_LIMIT):
+	"""Open issues of one app with the most events lately, as the issues table wants them."""
+	since = add_days(now_datetime(), -days)
+	busy = frappe.db.sql(
+		f"SELECT issue, COUNT(*) AS n FROM `tab{EVENT}` WHERE app = %s AND ts >= %s AND issue IS NOT NULL GROUP BY issue ORDER BY n DESC LIMIT 50",  # noqa: S608
+		(app, since),
+		as_dict=True,
+	)
+	counts = {r.issue: cint(r.n) for r in busy}
+	fields = ["name", "title", "culprit", "app", "kind", "level", "status", "event_count", "users_affected", "devices_affected", "last_seen", "last_version"]
+	opened = frappe.get_all(ISSUE, filters={"app": app, "status": "Open"}, fields=fields, order_by="last_seen desc", limit_page_length=50)
+	opened.sort(key=lambda r: counts.get(r.name, 0), reverse=True)
+	rows = []
+	for r in opened[:limit]:
+		r["events_in_range"] = counts.get(r.name, 0)
+		r["last_seen"] = _ts(r.get("last_seen"))
+		rows.append(r)
+	return rows
+
+
+def _count_by(app, expression, where, limit=5):
+	return frappe.db.sql(
+		f"SELECT {expression} AS label, COUNT(*) AS n FROM `tab{INSTALL}` WHERE app = %s AND {where} GROUP BY {expression} ORDER BY n DESC LIMIT {int(limit)}",  # noqa: S608
+		(app,),
+		as_dict=True,
+	)
+
+
+@frappe.whitelist(methods=["GET"])
+def app_overview(app):
+	"""Everything the per-app page shows, in one call: version now, adoption, what's new, what's going on."""
+	_manager()
+	name = frappe.db.get_value(MOBILE_APP, _text(app), "name")
+	if not name:
+		frappe.throw(_("App not found."), frappe.DoesNotExistError)
+	row = frappe.db.get_value(
+		MOBILE_APP,
+		name,
+		[
+			"name", "enabled", "enable_monitoring", "github_repo", "ota_base_url", "platform", "latest_version",
+			"latest_runtime", "latest_apk_version", "published_at", "checked_at", "last_error", "github_checked_at",
+			"github_error", "github_data",
+		],
+		as_dict=True,
+	)
+	latest = _text(row.latest_version)
+	repo = _text(row.github_repo)
+
+	dist = version_distribution(
+		frappe.db.sql(
+			f"SELECT app_version, runtime_version, status, COUNT(*) FROM `tab{INSTALL}` WHERE app = %s GROUP BY app_version, runtime_version, status",  # noqa: S608
+			(name,),
+		),
+		latest,
+	)
+	users_total = cint(
+		frappe.db.sql(
+			f"SELECT COUNT(DISTINCT u.user) FROM `tab{INSTALL_USER}` u JOIN `tab{INSTALL}` i ON i.name = u.parent WHERE i.app = %s",  # noqa: S608
+			(name,),
+		)[0][0]
+	)
+	users_on_latest = 0
+	if parse_version(latest):
+		users_on_latest = cint(
+			frappe.db.sql(
+				f"SELECT COUNT(DISTINCT u.user) FROM `tab{INSTALL_USER}` u JOIN `tab{INSTALL}` i ON i.name = u.parent "  # noqa: S608
+				"WHERE i.app = %s AND u.app_version IN (%s, %s)",
+				(name, latest, "v" + latest),
+			)[0][0]
+		)
+	behind = frappe.db.sql(
+		f"SELECT install_id, user, device_brand, device_model, device_name, app_version, runtime_version, status, update_to, last_seen "  # noqa: S608
+		f"FROM `tab{INSTALL}` WHERE app = %s AND status IN ('needs_apk', 'behind_ota') ORDER BY last_seen DESC LIMIT {BEHIND_LIMIT}",
+		(name,),
+		as_dict=True,
+	)
+	full_names = {}
+	users = {r.user for r in behind if r.user}
+	if users:
+		full_names = {u.name: u.full_name for u in frappe.get_all("User", filters={"name": ["in", list(users)]}, fields=["name", "full_name"])}
+	for r in behind:
+		r["full_name"] = full_names.get(r.user, "")
+		r["last_seen"] = _ts(r.get("last_seen"))
+
+	by_status = dist["by_status"]
+	adoption = {
+		**dist,
+		"users_total": users_total,
+		"users_on_latest": users_on_latest,
+		"needs_apk": cint(by_status.get("needs_apk")),
+		"behind_ota": cint(by_status.get("behind_ota")),
+		"dormant": cint(by_status.get("dormant")),
+		"behind": behind,
+	}
+	health = _health_counts(name)
+	repo_url = f"https://github.com/{repo}" if repo else ""
+	return {
+		"app": {
+			"name": name,
+			"enabled": bool(cint(row.enabled)),
+			"enable_monitoring": bool(cint(row.enable_monitoring)),
+			"github_repo": repo,
+			"ota_base_url": _text(row.ota_base_url),
+			"platform": _text(row.platform),
+			"checked_at": _ts(row.checked_at),
+			"last_error": _text(row.last_error),
+		},
+		"links": {
+			"repo": repo_url,
+			"releases": f"{repo_url}/releases" if repo else "",
+			"actions": f"{repo_url}/actions" if repo else "",
+			"pages": _pages_url(row.ota_base_url),
+		},
+		"version": {
+			"latest_version": latest,
+			"latest_runtime": _text(row.latest_runtime),
+			"latest_apk_version": _text(row.latest_apk_version),
+			"latest_overall": _newest_version(latest, row.latest_apk_version),
+			"published_at": _ts(row.published_at),
+			"summary": version_summary(latest, row.latest_runtime, row.latest_apk_version),
+		},
+		"adoption": adoption,
+		"github": _github_view(row, latest),
+		"activity": {
+			"days": APP_PAGE_DAYS,
+			"series": _event_series(name, APP_PAGE_DAYS),
+			"open_issues": _open_issues(name, APP_PAGE_DAYS),
+			"models": _count_by(name, "CONCAT_WS(' ', device_brand, device_model)", "device_model != ''"),
+			"os_versions": _count_by(name, "CONCAT_WS(' ', platform, os_version)", "os_version != ''"),
+			"health": {k: health.get(k, 0) for k in ("devices", "low_battery", "low_storage", "offline", "outdated_os", "outdated_app")},
+		},
+		"refresh_cooldown": REFRESH_COOLDOWN_SECONDS,
+		"server_time": str(now_datetime()),
+	}
+
+
+def _cooldown_cache():
+	# frappe.cache is a callable on v15 and the wrapper instance on v16+.
+	cache = frappe.cache
+	return cache() if callable(cache) else cache
+
+
+@frappe.whitelist(methods=["POST"])
+def refresh_app(app):
+	"""Re-read one app's latest OTA / APK and its GitHub releases and runs now. At most once a minute per app."""
+	_manager()
+	name = frappe.db.get_value(MOBILE_APP, _text(app), "name")
+	if not name:
+		frappe.throw(_("App not found."), frappe.DoesNotExistError)
+	key = f"upande_mobile:refresh_app:{name}"
+	cache, last = None, None
+	try:
+		cache = _cooldown_cache()
+		last = cache.get_value(key)
+	except Exception:
+		cache = None
+	if last is None:
+		# no cache to remember it in: fall back to when the record was last checked
+		checked = frappe.db.get_value(MOBILE_APP, name, "checked_at") if cache is None else None
+		last = get_datetime(checked).timestamp() if checked else None
+	elapsed = time.time() - float(last) if last is not None else None
+	if elapsed is not None and 0 <= elapsed < REFRESH_COOLDOWN_SECONDS:
+		return {"refreshed": False, "retry_in": max(1, math.ceil(REFRESH_COOLDOWN_SECONDS - elapsed))}
+	if cache is not None:
+		try:
+			cache.set_value(key, time.time(), expires_in_sec=REFRESH_COOLDOWN_SECONDS)
+		except Exception:
+			pass
+	doc = frappe.get_doc(MOBILE_APP, name)
+	_refresh_app(doc)
+	doc.flags.ignore_permissions = True
+	doc.save()
+	recompute_statuses(app=name)
+	frappe.db.commit()
+	return {
+		"refreshed": True,
+		"retry_in": REFRESH_COOLDOWN_SECONDS,
+		"checked_at": _ts(doc.checked_at),
+		"github_error": _text(doc.github_error),
+		"last_error": _text(doc.last_error),
+	}
 
 
 # --------------------------------------------------------------------------- #

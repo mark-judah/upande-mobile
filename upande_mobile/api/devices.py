@@ -41,6 +41,7 @@ from frappe.utils import (
 	today,
 )
 
+from upande_mobile import github
 from upande_mobile.validation import InvalidSource, is_safe_base_url, validate_github_repo
 
 MOBILE_APP = "Mobile App"
@@ -1024,7 +1025,7 @@ def latest_apk(source):
 	except InvalidSource:
 		raise ValueError("GitHub repo must look like owner/repo.") from None
 	headers = dict(HTTP_HEADERS, Accept="application/vnd.github+json")
-	token = frappe.conf.get("mobile_app_github_token")
+	token = github.github_token()
 	if token:
 		headers["Authorization"] = f"Bearer {token}"
 	response = requests.get(
@@ -1063,6 +1064,58 @@ def _iso_to_system(value):
 		return None
 
 
+def _refresh_github(doc):
+	"""Fetch one app's recent releases and Actions runs onto its Mobile App record. Never raises.
+
+	Each part (releases, runs) is replaced only when GitHub answered; on a failure, a rate limit
+	included, the previous data stays and the message goes to `github_error`. ETags make an
+	unchanged answer a free 304. Nothing here is ever allowed to disturb the OTA / APK fields.
+	"""
+	repo = _text(doc.github_repo)
+	if not repo:
+		doc.github_error = None
+		return
+	try:
+		repo = validate_github_repo(repo)
+	except InvalidSource as exc:
+		doc.github_error = _clip(str(exc), 300)
+		return
+
+	token = github.github_token()
+	previous = github.load_data(doc.github_data)
+	data = dict(previous)
+	etags = dict(previous.get("etags") or {})
+	errors, succeeded = [], False
+	for key, label, fetch in (("releases", "Releases", github.fetch_releases), ("runs", "Actions runs", github.fetch_runs)):
+		try:
+			items, etag = fetch(repo, etags.get(key), token)
+			if items is not None:
+				data[key] = items
+			if etag:
+				etags[key] = etag
+			succeeded = True
+		except github.GitHubRateLimited as exc:
+			errors.append(f"{label}: {github.scrub(exc, token)}" + _reset_note(exc.reset))
+		except Exception as exc:
+			errors.append(f"{label}: {github.scrub(exc, token)[:200]}")
+	data["etags"] = etags
+	if succeeded:
+		data["fetched_at"] = now()
+	doc.github_data = github.dump_data(data)
+	doc.github_checked_at = now()
+	doc.github_error = "\n".join(errors)[:1000] or None
+
+
+def _reset_note(reset):
+	"""' It resets at 14:05 UTC.' for a rate-limit reset epoch, or ''."""
+	try:
+		from datetime import datetime, timezone
+
+		return f" It resets at {datetime.fromtimestamp(int(reset), tz=timezone.utc):%H:%M} UTC." if reset else ""
+	except Exception:
+		return ""
+
+
 def _refresh_app(doc):
 	"""Fetch one app's latest onto its Mobile App record. Errors are kept on the record, never raised.
 
@@ -1098,14 +1151,16 @@ def _refresh_app(doc):
 		errors.append(f"GitHub releases: {exc}")
 	doc.checked_at = now()
 	doc.last_error = "\n".join(errors)[:1000] or None
+	_refresh_github(doc)
 
 
-def recompute_statuses():
-	"""Write each install's status/update_to against the latest now on the Single."""
+def recompute_statuses(app=None):
+	"""Write each install's status/update_to against the latest now on the Single (one app's, or all)."""
 	apps = apps_by_name()
 	now_dt = now_datetime()
 	rows = frappe.get_all(
 		INSTALL,
+		filters={"app": app} if app else {},
 		fields=["name", "app", "app_version", "runtime_version", "last_seen", "status", "update_to"],
 		limit_page_length=0,
 	)

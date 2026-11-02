@@ -115,6 +115,27 @@ pre.code { margin: 0; padding: 10px; background: var(--surface-2); border: 1px s
 .err { background: var(--bad-bg); color: var(--bad); padding: 10px 12px; border-radius: 8px; margin-bottom: 12px; }
 .toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 8px 14px; border-radius: 8px; z-index: 20; }
 
+/* per-app page */
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { padding: 4px 12px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-2); color: var(--text); font-weight: 600; }
+.chip:hover { text-decoration: none; border-color: var(--accent); }
+.bigver { font-size: 34px; font-weight: 700; line-height: 1.1; margin-bottom: 4px; word-break: break-word; }
+.dist { padding: 5px 0; }
+.dist-top { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 3px; }
+.dist-top .latest { font-weight: 700; }
+.meter { height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.meter i { display: block; height: 100%; background: var(--muted); border-radius: 999px; }
+.meter.latest i { background: var(--ok); }
+.notes h3, .notes h4, .notes h5, .notes h6 { margin: 12px 0 4px; font-size: 14px; }
+.notes p { margin: 4px 0; word-break: break-word; }
+.notes ul { margin: 4px 0; padding-left: 20px; }
+.notes li { margin: 2px 0; word-break: break-word; }
+.notes code { font-family: var(--mono); font-size: 12.5px; background: var(--surface-2); border-radius: 4px; padding: 0 4px; }
+details.release { border-top: 1px solid var(--border); padding: 8px 0; }
+details.release:first-of-type { border-top: 0; }
+details.release summary { cursor: pointer; }
+details.release[open] summary { margin-bottom: 8px; }
+
 @media (max-width: 640px) {
   main { padding: 10px; }
   .top { padding: 8px 10px; }

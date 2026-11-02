@@ -82,6 +82,15 @@
   }
   function card(title, body) { return h('section', { class: 'card' }, [title ? h('h2', {}, title) : null].concat(body)); }
   function empty(text) { return h('p', { class: 'empty' }, text); }
+  function appLink(name) { return name ? h('a', { href: '#/app/' + encodeURIComponent(name) }, name) : '—'; }
+  function setApp(name) {
+    state.app = name || '';
+    try { localStorage.setItem('mm-app', state.app); } catch (e) { /* ignore */ }
+    appSel.value = state.app;
+  }
+  /* Only plain http(s) links are ever made clickable, always opened without access to this page. */
+  function safeHref(u) { return /^https?:\/\/[^\s]+$/i.test(String(u || '')) ? String(u) : null; }
+  function extLink(label, url) { var u = safeHref(url); return u ? h('a', { href: u, target: '_blank', rel: 'noopener noreferrer' }, label) : null; }
   function errBox(e) { return h('div', { class: 'err', role: 'alert' }, e.message || String(e)); }
   function toast(text) {
     var t = h('div', { class: 'toast', role: 'status' }, text); document.body.appendChild(t);
@@ -156,7 +165,7 @@
       h('thead', {}, h('tr', {}, ['Issue', 'Status', 'Events', 'Users', 'Last seen', 'Version'].map(function (t, i) { return h('th', { class: i >= 2 && i <= 3 ? 'num' : '' }, t); }))),
       h('tbody', {}, rows.map(function (r) {
         return h('tr', {}, [
-          h('td', {}, [h('a', { class: 'title', href: '#/issue/' + encodeURIComponent(r.name) }, r.title || r.name), h('div', { class: 'sub' }, [badge(r.kind), ' ', badge(r.level), ' ', r.culprit || '', r.app ? ' · ' + r.app : ''])]),
+          h('td', {}, [h('a', { class: 'title', href: '#/issue/' + encodeURIComponent(r.name) }, r.title || r.name), h('div', { class: 'sub' }, [badge(r.kind), ' ', badge(r.level), ' ', r.culprit || '', r.app ? ' · ' : null, r.app ? appLink(r.app) : null])]),
           h('td', {}, badge(r.status)),
           h('td', { class: 'num' }, num(r.event_count || r.events_in_range)),
           h('td', { class: 'num' }, num(r.users_affected)),
@@ -180,6 +189,7 @@
           stat('Devices affected', t.devices), stat('Users affected', t.users),
           stat('Open issues', d.issues_by_status.Open, d.issues_by_status.Open ? 'bad' : '', '#/issues?status=Open')
         ]),
+        d.apps && d.apps.length ? card('Apps', appChips(d.apps)) : null,
         h('div', { class: 'grid two' }, [
           card('Events per day', chart(d.series)),
           card('Fleet health', [
@@ -274,7 +284,7 @@
       mount([
         h('a', { class: 'back', href: '#/issues' }, '← Issues'),
         h('h1', { style: 'word-break:break-word' }, i.title || i.name),
-        h('div', { class: 'actions' }, [badge(i.status), badge(i.kind), badge(i.level), h('span', { class: 'muted' }, [i.app, ' · ', num(i.event_count), ' events · ', num(i.users_affected), ' users · ', num(i.devices_affected), ' devices · first ', when(i.first_seen), ' · last ', when(i.last_seen)]),
+        h('div', { class: 'actions' }, [badge(i.status), badge(i.kind), badge(i.level), h('span', { class: 'muted' }, [appLink(i.app), ' · ', num(i.event_count), ' events · ', num(i.users_affected), ' users · ', num(i.devices_affected), ' devices · first ', when(i.first_seen), ' · last ', when(i.last_seen)]),
           h('span', { style: 'flex:1' }),
           i.status !== 'Resolved' ? h('button', { class: 'primary', type: 'button', onclick: function () { setStatus('Resolved'); } }, 'Resolve') : h('button', { type: 'button', onclick: function () { setStatus('Open'); } }, 'Reopen'),
           i.status !== 'Ignored' ? h('button', { type: 'button', onclick: function () { setStatus('Ignored'); } }, 'Ignore') : null]),
@@ -321,7 +331,7 @@
         h('thead', {}, h('tr', {}, ['Device', 'User', 'OS', 'App', 'Battery', 'Storage free', 'Network', 'Last seen', 'Health'].map(function (t) { return h('th', {}, t); }))),
         h('tbody', {}, d.rows.map(function (r) {
           return h('tr', {}, [
-            h('td', {}, [h('a', { class: 'title', href: '#/device/' + encodeURIComponent(r.install_id) }, [r.device_brand, r.device_model].filter(Boolean).join(' ') || r.device_name || r.install_id.slice(0, 8)), h('div', { class: 'sub' }, r.app)]),
+            h('td', {}, [h('a', { class: 'title', href: '#/device/' + encodeURIComponent(r.install_id) }, [r.device_brand, r.device_model].filter(Boolean).join(' ') || r.device_name || r.install_id.slice(0, 8)), h('div', { class: 'sub' }, appLink(r.app))]),
             h('td', {}, r.full_name || r.user || '—'),
             h('td', {}, [r.platform, r.os_version].filter(Boolean).join(' ') || '—'),
             h('td', {}, [r.app_version || '—', h('div', { class: 'sub' }, r.status || '')]),
@@ -347,7 +357,7 @@
         h('a', { class: 'back', href: '#/devices' }, '← Devices'),
         h('h1', {}, dev ? ([dev.device_brand, dev.device_model].filter(Boolean).join(' ') || id) : id),
         dev ? h('div', { class: 'grid two' }, [
-          card('Last known state', [kv([['User', dev.full_name || dev.user], ['App', dev.app + ' ' + (dev.app_version || '')], ['Register status', dev.status], ['OS', [dev.platform, dev.os_version].join(' ')], ['Last seen', full(dev.last_seen)],
+          card('Last known state', [kv([['User', dev.full_name || dev.user], ['App', [appLink(dev.app), ' ' + (dev.app_version || '')]], ['Register status', dev.status], ['OS', [dev.platform, dev.os_version].join(' ')], ['Last seen', full(dev.last_seen)],
             ['Battery', dev.snapshot_at ? pct(dev.battery_level) + (snap.battery_state ? ' · ' + snap.battery_state : '') : ''], ['Storage free', dev.snapshot_at ? bytes(dev.storage_free_bytes) + ' of ' + bytes(dev.storage_total_bytes) : ''],
             ['Network', [dev.network_type, dev.connectivity].filter(Boolean).join(' · ')], ['Snapshot', full(dev.snapshot_at)], ['Install id', dev.install_id]]),
             dev.flags.length ? h('div', { class: 'flags', style: 'margin-top:8px' }, dev.flags.map(function (k) { return badge(FLAG_TEXT[k], 'warn'); })) : null]),
@@ -355,6 +365,201 @@
         ]) : h('p', { class: 'muted' }, 'This device is not in the register (events only).'),
         card('Timeline (' + num(ev.total) + ' events)', eventTable(ev.rows))
       ]);
+    });
+  }
+
+
+  /* ---------- one app: what is going on, what version, who has it, what is new ---------- */
+  function appChips(apps) {
+    return h('div', { class: 'chips' }, apps.map(function (a) {
+      return h('a', { class: 'chip', href: '#/app/' + encodeURIComponent(a.name) }, [a.name, a.enabled ? null : ' (disabled)', a.enable_monitoring ? null : ' (monitoring off)']);
+    }));
+  }
+  function inlineNodes(nodes) {
+    return (nodes || []).map(function (n) {
+      if (n.k === 'b') return h('strong', {}, n.v);
+      if (n.k === 'code') return h('code', {}, n.v);
+      if (n.k === 'a') { var u = safeHref(n.href); return u ? h('a', { href: u, target: '_blank', rel: 'noopener noreferrer' }, n.v) : String(n.v); }
+      return String(n.v == null ? '' : n.v);
+    });
+  }
+  /* Release notes arrive as a small block structure and are built from text nodes: GitHub's text is never parsed as HTML. */
+  function renderNotes(blocks) {
+    if (!blocks || !blocks.length) return h('p', { class: 'muted' }, 'This release has no notes.');
+    return h('div', { class: 'notes' }, blocks.map(function (b) {
+      if (b.t === 'h') return h('h' + Math.min(Math.max(b.level || 4, 3), 6), {}, inlineNodes(b.inline));
+      if (b.t === 'ul') return h('ul', {}, (b.items || []).map(function (it) { return h('li', {}, inlineNodes(it)); }));
+      return h('p', {}, inlineNodes(b.inline));
+    }));
+  }
+  function kindBadge(r) { return badge(r.has_apk ? 'APK' : 'OTA', r.has_apk ? 'api' : 'ok'); }
+  function releaseLine(r) {
+    return h('div', { class: 'actions' }, [kindBadge(r), h('span', { class: 'muted', title: full(r.published_at) }, r.published_at ? 'published ' + when(r.published_at) : ''),
+      r.has_apk && r.apk_size ? h('span', { class: 'muted' }, 'APK ' + bytes(r.apk_size)) : null, extLink('Open on GitHub', r.url)]);
+  }
+  var RUN_BADGE = { success: 'ok', failure: 'bad', timed_out: 'bad', startup_failure: 'bad', cancelled: 'warn', action_required: 'warn' };
+  function runBadge(r) {
+    if (r.status && r.status !== 'completed') return badge(r.status.replace(/_/g, ' '), 'warn');
+    return badge((r.conclusion || 'unknown').replace(/_/g, ' '), RUN_BADGE[r.conclusion] || 'info');
+  }
+  function meters(rows, key, unknownLabel) {
+    if (!rows || !rows.length) return empty('No devices registered yet.');
+    return h('div', {}, rows.map(function (r) {
+      var label = r[key] || unknownLabel;
+      return h('div', { class: 'dist' }, [
+        h('div', { class: 'dist-top' }, [h('span', { class: r.latest ? 'latest' : '' }, [label, r.latest ? ' (latest)' : '']), h('span', { class: 'muted' }, num(r.devices) + ' · ' + r.percent + '%')]),
+        h('div', { class: 'meter' + (r.latest ? ' latest' : ''), role: 'img', 'aria-label': label + ': ' + r.percent + ' percent of devices' }, h('i', { style: 'width:' + Math.max(r.percent, r.devices ? 1 : 0) + '%' }))
+      ]);
+    }));
+  }
+  function refreshButton(name, cooldown, reload) {
+    var btn = h('button', { type: 'button', class: 'small' }, 'Refresh from GitHub');
+    function reset() { btn.disabled = false; btn.textContent = 'Refresh from GitHub'; }
+    function lock(sec) {
+      var left = Math.max(1, Number(sec) || cooldown || 60);
+      btn.disabled = true; btn.textContent = 'Refresh again in ' + left + ' s';
+      var t = setInterval(function () {
+        left -= 1;
+        if (left <= 0 || !document.body.contains(btn)) { clearInterval(t); reset(); } else btn.textContent = 'Refresh again in ' + left + ' s';
+      }, 1000);
+    }
+    btn.addEventListener('click', function () {
+      btn.disabled = true; btn.textContent = 'Refreshing…';
+      call('refresh_app', { app: name }, 'POST').then(function (r) {
+        if (r.refreshed) { toast('Refreshed from GitHub'); reload(); } else { toast('Refreshed a moment ago'); lock(r.retry_in); }
+      }).catch(function (e) { toast(e.message); reset(); });
+    });
+    return btn;
+  }
+  function appStat(name, label, value, cls, href) {
+    var el = stat(label, value, cls, href);
+    if (href) el.addEventListener('click', function () { setApp(name); });
+    return el;
+  }
+
+  function renderApp(name) {
+    name = name || state.app;
+    if (!name) {
+      return call('overview', { days: 1 }).then(function (d) {
+        fillApps(d.apps);
+        mount([h('h1', {}, 'Apps'), card(null, d.apps && d.apps.length ? appChips(d.apps) : empty('No apps yet. Register one with upande_mobile.api.register_app, or let a device report.'))]);
+      });
+    }
+    return call('app_overview', { app: name }).then(function (d) {
+      var a = d.app, v = d.version, ad = d.adoption, g = d.github, act = d.activity, L = d.links, hl = act.health || {};
+      var known = !!v.latest_version;
+      var nodes = [];
+
+      nodes.push(h('a', { class: 'back', href: '#/overview' }, '← Overview'));
+      nodes.push(h('div', { class: 'actions' }, [
+        h('h1', { style: 'margin:0;word-break:break-word' }, a.name),
+        badge(a.enabled ? 'enabled' : 'disabled', a.enabled ? 'ok' : 'info'),
+        badge(a.enable_monitoring ? 'monitoring on' : 'monitoring off', a.enable_monitoring ? 'ok' : 'warn'),
+        h('span', { style: 'flex:1' }),
+        a.github_repo ? refreshButton(a.name, d.refresh_cooldown, route_) : null
+      ]));
+      if (a.github_repo && g.error) {
+        nodes.push(h('div', { class: 'err', role: 'alert' }, [h('strong', {}, g.stale ? 'GitHub unreachable (showing data from ' + when(g.fetched_at) + ')' : 'GitHub could not be read'), h('div', { class: 'sub', style: 'white-space:pre-wrap' }, g.error)]));
+      }
+      nodes.push(card(null, [
+        kv([
+          ['Repository', a.github_repo ? (extLink(a.github_repo, L.repo) || a.github_repo) : 'not set'],
+          ['OTA base URL', a.ota_base_url], ['Platform', a.platform],
+          ['Version check', a.checked_at ? when(a.checked_at) + ' (' + full(a.checked_at) + ')' : 'not yet'],
+          ['GitHub data', a.github_repo ? (g.checked_at ? 'checked ' + when(g.checked_at) : 'not yet') : ''],
+          ['Version check error', a.last_error]
+        ]),
+        h('div', { class: 'actions', style: 'margin:10px 0 0' }, [extLink('Repository', L.repo), extLink('Releases', L.releases), extLink('Actions', L.actions), extLink('Pages', L.pages)])
+      ]));
+
+      /* version now */
+      nodes.push(h('div', { class: 'grid two' }, [
+        card('Version now', [
+          h('div', { class: 'bigver' }, v.latest_overall ? 'v' + v.latest_overall : '—'),
+          h('p', {}, v.summary),
+          kv([['Latest OTA', v.latest_version ? 'v' + v.latest_version : ''], ['Runtime', v.latest_runtime], ['Newest APK', v.latest_apk_version ? 'v' + v.latest_apk_version : ''],
+            ['Published', v.published_at ? when(v.published_at) + ' (' + full(v.published_at) + ')' : '']]),
+          known ? null : h('p', { class: 'muted' }, 'No OTA manifest was found yet. Check the OTA base URL and that GitHub Pages is serving it.')
+        ]),
+        card('Adoption', [
+          h('div', { class: 'grid cards', style: 'margin:0' }, [
+            stat('Devices registered', ad.total),
+            stat(known ? 'On latest · ' + ad.on_latest_percent + '%' : 'On latest', ad.on_latest, ad.on_latest ? '' : ''),
+            stat('Users on latest', ad.users_on_latest),
+            stat('Need an APK', ad.needs_apk, ad.needs_apk ? 'bad' : ''),
+            stat('Behind (OTA)', ad.behind_ota, ad.behind_ota ? 'warn' : ''),
+            stat('Dormant', ad.dormant)
+          ]),
+          h('p', { class: 'muted' }, known
+            ? num(ad.users_total) + ' accounts have used this app. ' + ad.on_latest_percent_active + '% of the ' + num(ad.active) + ' active devices are on the latest version.'
+            : 'The latest version is not known yet, so devices cannot be compared with it.')
+        ])
+      ]));
+      nodes.push(h('div', { class: 'grid two' }, [
+        card('Devices by version', meters(ad.by_version, 'version', 'unknown')),
+        card('Devices by runtime', meters(ad.by_runtime, 'runtime', 'unknown'))
+      ]));
+      nodes.push(card('Not updated yet', ad.behind && ad.behind.length ? h('div', { class: 'table-wrap' }, h('table', {}, [
+        h('thead', {}, h('tr', {}, ['Device', 'User', 'Version', 'Needs', 'Last seen'].map(function (t) { return h('th', {}, t); }))),
+        h('tbody', {}, ad.behind.map(function (r) {
+          return h('tr', {}, [
+            h('td', {}, h('a', { class: 'title', href: '#/device/' + encodeURIComponent(r.install_id) }, [r.device_brand, r.device_model].filter(Boolean).join(' ') || r.device_name || r.install_id.slice(0, 8))),
+            h('td', {}, r.full_name || r.user || '—'),
+            h('td', {}, [r.app_version || '—', h('div', { class: 'sub' }, r.runtime_version ? 'runtime ' + r.runtime_version : '')]),
+            h('td', {}, [badge(r.status, r.status === 'needs_apk' ? 'bad' : 'warn'), h('div', { class: 'sub' }, r.update_to || '')]),
+            h('td', { title: full(r.last_seen) }, when(r.last_seen))
+          ]);
+        }))
+      ])) : empty('Every active device is up to date.')));
+
+      /* what's new */
+      if (!g.repo_set) {
+        nodes.push(card("What's new", h('p', { class: 'muted' }, 'No GitHub repo is set for this app. Set GitHub Repo on its Mobile App record to see releases and workflow runs here.')));
+      } else if (!g.releases.length) {
+        nodes.push(card("What's new", empty(g.error ? 'No releases could be read yet.' : 'No releases yet.')));
+      } else {
+        var cur = g.releases.filter(function (r) { return r.tag === g.whats_new; })[0] || g.releases[0];
+        nodes.push(card("What's new in " + cur.tag, [
+          releaseLine(cur),
+          !g.whats_new_exact && known ? h('p', { class: 'muted' }, 'There is no release for v' + v.latest_version + ' yet, so this is the newest release.') : null,
+          renderNotes(cur.notes)
+        ]));
+        var earlier = g.releases.filter(function (r) { return r !== cur; });
+        if (earlier.length) {
+          nodes.push(card('Earlier releases', earlier.map(function (r) {
+            return h('details', { class: 'release' }, [h('summary', {}, [h('strong', {}, r.tag), ' ', kindBadge(r), ' ', h('span', { class: 'muted' }, r.published_at ? when(r.published_at) : '')]), releaseLine(r), renderNotes(r.notes)]);
+          })));
+        }
+      }
+
+      /* what's going on */
+      nodes.push(h('div', { class: 'grid two' }, [
+        card('GitHub Actions', !g.repo_set ? h('p', { class: 'muted' }, 'No GitHub repo set.') : g.runs.length ? h('div', { class: 'table-wrap' }, h('table', {}, [
+          h('thead', {}, h('tr', {}, ['Run', 'Result', 'Started'].map(function (t) { return h('th', {}, t); }))),
+          h('tbody', {}, g.runs.map(function (r) {
+            return h('tr', {}, [
+              h('td', {}, [extLink(r.title || r.name || ('#' + r.id), r.url) || (r.title || r.name), h('div', { class: 'sub' }, [r.name, r.branch ? ' · ' + r.branch : '', r.event ? ' · ' + r.event : ''].join(''))]),
+              h('td', {}, runBadge(r)),
+              h('td', { title: full(r.started_at) }, when(r.started_at))
+            ]);
+          }))
+        ])) : empty(g.error ? 'No workflow runs could be read yet.' : 'No workflow runs yet.')),
+        card('Events per day (last ' + act.days + ' days)', chart(act.series))
+      ]));
+      nodes.push(card('Open issues', act.open_issues && act.open_issues.length ? issueTable(act.open_issues) : empty('No open issues for this app.')));
+      nodes.push(h('div', { class: 'grid two' }, [
+        card('Fleet health', [
+          h('div', { class: 'grid cards', style: 'margin:0' }, [
+            appStat(a.name, 'Low battery', hl.low_battery, hl.low_battery ? 'warn' : '', '#/devices?health=low_battery'),
+            appStat(a.name, 'Low storage', hl.low_storage, hl.low_storage ? 'warn' : '', '#/devices?health=low_storage'),
+            appStat(a.name, 'Old OS', hl.outdated_os, hl.outdated_os ? 'warn' : '', '#/devices?health=outdated_os'),
+            appStat(a.name, 'Offline', hl.offline, '', '#/devices?health=offline')
+          ]),
+          h('p', { class: 'muted' }, num(hl.devices) + ' registered devices.')
+        ]),
+        h('div', { class: 'grid' }, [card('Device models', listRows(act.models)), card('OS versions', listRows(act.os_versions))])
+      ]));
+      mount(nodes);
     });
   }
 
@@ -381,7 +586,7 @@
     var r = route(), p = r.parts[0] || 'overview';
     [].forEach.call(document.querySelectorAll('#nav a'), function (a) { a.className = a.getAttribute('data-route') === (p === 'issue' ? 'issues' : p === 'device' ? 'devices' : p) ? 'on' : ''; });
     mount(h('p', { class: 'muted' }, 'Loading…'));
-    var job = p === 'issues' ? renderIssues(r.q) : p === 'issue' ? renderIssue(r.parts[1] || '') : p === 'devices' ? renderDevices(r.q) : p === 'device' ? renderDevice(r.parts[1] || '') : renderOverview(r.q);
+    var job = p === 'issues' ? renderIssues(r.q) : p === 'issue' ? renderIssue(r.parts[1] || '') : p === 'devices' ? renderDevices(r.q) : p === 'device' ? renderDevice(r.parts[1] || '') : p === 'app' ? renderApp(r.parts[1] || '') : renderOverview(r.q);
     job.catch(function (e) { mount(errBox(e)); });
   }
   window.addEventListener('hashchange', route_);

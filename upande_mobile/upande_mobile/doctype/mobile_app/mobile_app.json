@@ -22,6 +22,10 @@
   "published_at",
   "checked_at",
   "last_error",
+  "github_section",
+  "github_checked_at",
+  "github_error",
+  "github_data",
   "monitoring_section",
   "enable_monitoring",
   "accept_reports_before_sign_in",
@@ -125,6 +129,32 @@
    "fieldname": "last_error",
    "fieldtype": "Small Text",
    "label": "Last Error",
+   "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "description": "Releases and workflow runs read from GitHub by the hourly check, for the app page in the mobile monitor.",
+   "fieldname": "github_section",
+   "fieldtype": "Section Break",
+   "label": "GitHub Activity (cached)"
+  },
+  {
+   "fieldname": "github_checked_at",
+   "fieldtype": "Datetime",
+   "label": "GitHub Checked At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "github_error",
+   "fieldtype": "Small Text",
+   "label": "GitHub Error",
+   "read_only": 1
+  },
+  {
+   "fieldname": "github_data",
+   "fieldtype": "Long Text",
+   "hidden": 1,
+   "label": "GitHub Data",
    "read_only": 1
   },
   {
