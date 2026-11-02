@@ -104,6 +104,9 @@ All paths are under `/api/method/`.
 | `upande_mobile.api.monitor.overview`, `issues`, `issue`, `events`, `devices` | GET | System Manager | Dashboard data |
 | `upande_mobile.api.monitor.app_overview?app=<name>` | GET | System Manager | Everything the [App page](#app-page) shows, in one call |
 | `upande_mobile.api.monitor.refresh_app` (`app`) | POST | System Manager | Re-read one app's latest OTA, APK and GitHub data now. At most once a minute per app; inside that minute it answers `{refreshed: false, retry_in}` |
+| `upande_mobile.api.support.submit_report` | POST | signed-in user | "Report a problem": subject, details, a base64 JPEG `screenshot` (at most 1.5 MB), `diagnostics` JSON. 10 per hour per user. Creates a *Mobile Report* |
+| `upande_mobile.api.support.chat` | GET / POST | signed-in user | The person's conversation with support. `GET` returns messages (and marks replies read), `?count_only=1` returns the unread count; `POST` sends `text`. 60 messages per hour |
+| `upande_mobile.api.support.reports`, `report`, `set_report_status`, `chat_threads`, `chat_thread`, `chat_reply` | GET / POST | System Manager | The portal's Support page |
 | `upande_mobile.api.monitor.set_issue_status`, `purge_now` | POST | System Manager | Resolve or ignore an issue; delete expired events now |
 
 ## How OTA works
@@ -166,6 +169,14 @@ Everything from a device is shown as plain text, never as HTML.
 **Retention.** A daily job at 02:30 deletes events older than each app's Event Retention (default 30 days). Issues are kept. Delete now with `upande_mobile.api.monitor.purge_now`, optionally with `days` and `app`.
 
 **Limits on reports.** `ingest` accepts up to 50 events and 512 KB per request, and answers `{accepted, dropped, next_flush_ms, paused, reason}`. Rate limits per minute: 30 per user and 120 per IP, or 20 per IP for guests; beyond that it answers 429. A signed-in device reporting for an unregistered app creates it as a disabled Mobile App, so the first report is kept. A guest never creates an app. `paused` is true with `reason: monitoring_off` when the app's Enable Monitoring is off, or `reason: unknown_app` when the name is invalid or the cap of 20 auto-created apps is reached. The app's Enabled flag does not affect monitoring.
+
+## Support
+
+Problem reports and chat from the app's **Help** card, in the portal under **Support** (`/mobile-monitor#/support`).
+
+- **Reports** are *Mobile Report* records: subject, details, reporter, app, version, device, a private screenshot, and the diagnostics the phone attached (device facts, Wi-Fi and latency, the last requests with secrets removed, the last crash). Set the status to Open, In Progress or Resolved.
+- **Chat** is one *Mobile Chat Thread* per person per app with *Mobile Chat Message* rows. Replies from the portal show in the app within seconds. Unread counts show on the threads.
+- Everything a phone sends is size-capped and cleaned on the server (the same device whitelist and redaction as crash reports); the screenshot must be a real JPEG. Run `bench --site <site> migrate` after updating to create the three doctypes.
 
 ## App page
 

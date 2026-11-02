@@ -32,7 +32,7 @@
   /* ---------- API ---------- */
   function csrf() { return document.body.getAttribute('data-csrf') || ''; }
   function call(fn, params, method) {
-    var url = API + fn, opts = { credentials: 'same-origin', headers: { 'Accept': 'application/json' } };
+    var url = (fn.indexOf('support.') === 0 ? '/api/method/upande_mobile.api.' : API) + fn, opts = { credentials: 'same-origin', headers: { 'Accept': 'application/json' } };
     var qs = Object.keys(params || {}).filter(function (k) { return params[k] !== '' && params[k] != null; })
       .map(function (k) { return encodeURIComponent(k) + '=' + encodeURIComponent(params[k]); }).join('&');
     if (method === 'POST') {
@@ -599,11 +599,103 @@
   });
   try { var th = localStorage.getItem('mm-theme'); if (th) document.documentElement.setAttribute('data-theme', th); } catch (e) { /* ignore */ }
 
+  /* ---------- support: problem reports and chat ---------- */
+  var REPORT_BADGE = { 'Open': 'bad', 'In Progress': 'warn', 'Resolved': 'ok' };
+
+  function renderSupport(q) {
+    var tab = q.get('tab') === 'chat' ? 'chat' : 'reports', start = Number(q.get('start')) || 0, status = q.get('status') || '';
+    var tabs = h('div', { class: 'tabs' }, [['reports', 'Reports'], ['chat', 'Chat']].map(function (t) {
+      return h('button', { class: tab === t[0] ? 'on' : '', type: 'button', onclick: function () { go('support', { tab: t[0] }); } }, t[1]);
+    }));
+    if (tab === 'chat') {
+      return call('support.chat_threads', { app: state.app, start: start, page_length: 25 }).then(function (d) {
+        d.start = start; d.page_length = 25;
+        var table = d.rows.length ? h('div', { class: 'table-wrap' }, h('table', {}, [
+          h('thead', {}, h('tr', {}, ['Person', 'App', 'Last message', 'When', ''].map(function (t) { return h('th', {}, t); }))),
+          h('tbody', {}, d.rows.map(function (r) {
+            return h('tr', {}, [
+              h('td', {}, h('a', { class: 'title', href: '#/chat/' + encodeURIComponent(r.name) }, r.user_full_name || r.user)),
+              h('td', {}, appLink(r.app)), h('td', {}, r.last_preview || '—'), h('td', { title: full(r.last_message_at) }, when(r.last_message_at)),
+              h('td', {}, r.unread_staff ? badge(r.unread_staff + ' new', 'bad') : '')
+            ]);
+          }))
+        ])) : empty('No one has written in yet.');
+        mount([h('h1', {}, 'Support'), tabs, card(null, [table, pager(d, function (st) { go('support', { tab: 'chat', start: st }); })])]);
+      });
+    }
+    return call('support.reports', { app: state.app, status: status, start: start, page_length: 25 }).then(function (d) {
+      d.start = start; d.page_length = 25;
+      var filters = h('div', { class: 'tabs' }, [['', 'All'], ['Open', 'Open'], ['In Progress', 'In progress'], ['Resolved', 'Resolved']].map(function (t) {
+        return h('button', { class: status === t[0] ? 'on' : '', type: 'button', onclick: function () { go('support', { tab: 'reports', status: t[0] }); } }, t[1]);
+      }));
+      var table = d.rows.length ? h('div', { class: 'table-wrap' }, h('table', {}, [
+        h('thead', {}, h('tr', {}, ['Report', 'From', 'App', 'Device', 'Status', 'When'].map(function (t) { return h('th', {}, t); }))),
+        h('tbody', {}, d.rows.map(function (r) {
+          return h('tr', {}, [
+            h('td', {}, [h('a', { class: 'title', href: '#/report/' + encodeURIComponent(r.name) }, r.subject), h('div', { class: 'sub' }, r.name + (r.screenshot ? ' · screenshot' : ''))]),
+            h('td', {}, r.reporter_name || r.reporter), h('td', {}, [appLink(r.app), h('div', { class: 'sub' }, r.app_version || '')]),
+            h('td', {}, [r.device_model || '—', h('div', { class: 'sub' }, r.os_version || '')]),
+            h('td', {}, badge(r.status, REPORT_BADGE[r.status])), h('td', { title: full(r.creation) }, when(r.creation))
+          ]);
+        }))
+      ])) : empty('No reports.');
+      mount([h('h1', {}, 'Support'), tabs, h('div', { class: 'filters' }, [filters]), card(null, [table, pager(d, function (st) { go('support', { tab: 'reports', status: status, start: st }); })])]);
+    });
+  }
+
+  function renderReport(name) {
+    return call('support.report', { name: name }).then(function (r) {
+      var dg = r.diagnostics || {}, dev = dg.device || {}, calls = dg.recent_calls || [], crash = r.last_crash;
+      function setStatus(st) { call('support.set_report_status', { name: name, status: st }, 'POST').then(function () { toast('Marked ' + st); route_(); }).catch(function (e) { toast(e.message); }); }
+      var actions = h('div', { class: 'filters' }, ['Open', 'In Progress', 'Resolved'].map(function (st) {
+        return h('button', { type: 'button', class: r.status === st ? 'primary' : '', onclick: function () { setStatus(st); } }, st);
+      }));
+      mount([
+        h('a', { class: 'back', href: '#/support' }, '← Support'),
+        h('h1', {}, r.subject),
+        h('p', {}, [badge(r.status, REPORT_BADGE[r.status]), ' ', r.name, ' · ', when(r.creation)]),
+        actions,
+        h('div', { class: 'grid two' }, [
+          card('Report', [kv([['From', r.reporter_name || r.reporter], ['App', [appLink(r.app), ' ' + (r.app_version || '')]], ['Runtime', r.runtime_version], ['Device', r.device_model], ['OS', r.os_version], ['Install id', r.install_id]]),
+            r.description ? h('p', { style: 'white-space:pre-wrap;margin-top:10px' }, r.description) : null]),
+          card('Screenshot', r.screenshot ? h('a', { href: r.screenshot, target: '_blank', rel: 'noopener' }, h('img', { src: r.screenshot, alt: 'Screenshot from the phone', class: 'shot' })) : empty('No screenshot was attached.'))
+        ]),
+        crash ? card('Last crash' + (crash.fatal ? ' (fatal)' : ''), [h('p', {}, [h('b', {}, crash.message), crash.at ? ' · ' + crash.at : '', crash.screen ? ' · ' + crash.screen : '']), crash.stack ? h('pre', { class: 'code' }, crash.stack) : null]) : null,
+        card('Device when reported', [kv([
+          ['Battery', dev.battery_level != null ? pct(dev.battery_level) : ''], ['Storage free', dev.storage_free_bytes != null ? bytes(dev.storage_free_bytes) + ' of ' + bytes(dev.storage_total_bytes) : ''],
+          ['Network', dev.network_type], ['Wi-Fi', wifiText(dev)], ['Server latency', dev.latency_ms != null ? dev.latency_ms + ' ms' : ''], ['API response time', apiText(dev)],
+          ['Memory', dev.memory_total_bytes ? bytes(dev.memory_total_bytes) : ''], ['Locale', [dev.locale, dev.timezone].filter(Boolean).join(' · ')], ['Missing in this build', (dev.missing_modules || []).join(', ')]
+        ])]),
+        card('Last requests', calls.length ? h('div', { class: 'table-wrap' }, h('table', {}, [
+          h('thead', {}, h('tr', {}, ['Time', 'Request', 'Status', 'ms'].map(function (t) { return h('th', {}, t); }))),
+          h('tbody', {}, calls.map(function (c) { return h('tr', {}, [h('td', {}, when(c.ts)), h('td', { class: 'mono' }, c.method + ' ' + c.url), h('td', {}, c.status == null ? '—' : badge(String(c.status), c.status >= 400 ? 'bad' : 'ok')), h('td', {}, c.ms)]); }))
+        ])) : empty('None recorded.'))
+      ]);
+    });
+  }
+
+  function renderChat(thread) {
+    return call('support.chat_thread', { thread: thread }).then(function (d) {
+      var box = h('div', { class: 'chat' }, d.messages.length ? d.messages.map(function (m) {
+        return h('div', { class: 'msg ' + (m.from_staff ? 'staff' : 'them') }, [h('div', {}, m.text), h('div', { class: 'sub' }, (m.from_staff ? 'Support' : (d.thread.user_full_name || d.thread.user)) + ' · ' + when(m.sent_at))]);
+      }) : [empty('No messages.')]);
+      var input = h('textarea', { rows: 3, placeholder: 'Reply…', 'aria-label': 'Reply' });
+      var send = h('button', { type: 'button', class: 'primary', onclick: function () {
+        var text = input.value.trim(); if (!text) return;
+        send.disabled = true;
+        call('support.chat_reply', { thread: thread, text: text }, 'POST').then(function () { route_(); }).catch(function (e) { send.disabled = false; toast(e.message); });
+      } }, 'Send reply');
+      mount([h('a', { class: 'back', href: '#/support?tab=chat' }, '← Support'), h('h1', {}, d.thread.user_full_name || d.thread.user), h('p', { class: 'muted' }, [appLink(d.thread.app), ' · ', d.thread.user]),
+        card(null, [box, h('div', { class: 'reply' }, [input, send])])]);
+      box.scrollTop = box.scrollHeight;
+    });
+  }
+
   function route_() {
     var r = route(), p = r.parts[0] || 'overview';
-    [].forEach.call(document.querySelectorAll('#nav a'), function (a) { a.className = a.getAttribute('data-route') === (p === 'issue' ? 'issues' : p === 'device' ? 'devices' : p) ? 'on' : ''; });
+    [].forEach.call(document.querySelectorAll('#nav a'), function (a) { a.className = a.getAttribute('data-route') === (p === 'issue' ? 'issues' : p === 'device' ? 'devices' : p === 'report' || p === 'chat' ? 'support' : p) ? 'on' : ''; });
     mount(h('p', { class: 'muted' }, 'Loading…'));
-    var job = p === 'issues' ? renderIssues(r.q) : p === 'issue' ? renderIssue(r.parts[1] || '') : p === 'devices' ? renderDevices(r.q) : p === 'device' ? renderDevice(r.parts[1] || '') : p === 'app' ? renderApp(r.parts[1] || '') : renderOverview(r.q);
+    var job = p === 'issues' ? renderIssues(r.q) : p === 'issue' ? renderIssue(r.parts[1] || '') : p === 'devices' ? renderDevices(r.q) : p === 'device' ? renderDevice(r.parts[1] || '') : p === 'app' ? renderApp(r.parts[1] || '') : p === 'support' ? renderSupport(r.q) : p === 'report' ? renderReport(r.parts[1] || '') : p === 'chat' ? renderChat(r.parts[1] || '') : renderOverview(r.q);
     job.catch(function (e) { mount(errBox(e)); });
   }
   window.addEventListener('hashchange', route_);
