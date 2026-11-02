@@ -273,7 +273,7 @@
       ['Network', [d.network_type, d.is_connected === false ? 'not connected' : '', d.is_internet_reachable === false ? 'no internet' : '', d.carrier].filter(Boolean).join(' · ')],
       ['Wi-Fi', wifiText(d)], ['Server latency', d.latency_ms != null ? d.latency_ms + ' ms' : ''], ['API response time', apiText(d)],
       ['Screen', s.width ? s.width + '×' + s.height + ' @' + s.scale + 'x, font ' + s.font_scale : ''], ['Orientation', d.orientation], ['Locale', [d.locale, d.timezone].filter(Boolean).join(' · ')],
-      ['Missing in this build', (d.missing_modules || []).join(', ')], ['Theme', d.color_scheme], ['App state', d.app_state], ['JS engine', d.js_engine], ['Build', d.build_type], ['Install id', ev.install_id], ['IP seen', ev.ip_address]
+      ['Missing in this build', (d.missing_modules || []).join(', ')], ['Theme', d.color_scheme], ['App state', d.app_state], ['JS engine', d.js_engine], ['Mobile Kit', d.kit_version ? 'v' + d.kit_version : ''], ['Build', d.build_type], ['Install id', ev.install_id], ['IP seen', ev.ip_address]
     ])]);
   }
   function userPanel(ev) {
@@ -376,7 +376,7 @@
         dev ? h('div', { class: 'grid two' }, [
           card('Last known state', [kv([['User', dev.full_name || dev.user], ['App', [appLink(dev.app), ' ' + (dev.app_version || '')]], ['Register status', dev.status], ['OS', [dev.platform, dev.os_version].join(' ')], ['Last seen', full(dev.last_seen)],
             ['Battery', dev.snapshot_at ? pct(dev.battery_level) + (snap.battery_state ? ' · ' + snap.battery_state : '') : ''], ['Storage free', dev.snapshot_at ? bytes(dev.storage_free_bytes) + ' of ' + bytes(dev.storage_total_bytes) : ''],
-            ['Network', [dev.network_type, dev.connectivity].filter(Boolean).join(' · ')], ['Wi-Fi', wifiText(snap)], ['Server latency', snap.latency_ms != null ? snap.latency_ms + ' ms' : ''], ['API response time', apiText(snap)], ['Snapshot', full(dev.snapshot_at)], ['Install id', dev.install_id]]),
+            ['Mobile Kit', snap.kit_version ? 'v' + snap.kit_version : ''], ['Network', [dev.network_type, dev.connectivity].filter(Boolean).join(' · ')], ['Wi-Fi', wifiText(snap)], ['Server latency', snap.latency_ms != null ? snap.latency_ms + ' ms' : ''], ['API response time', apiText(snap)], ['Snapshot', full(dev.snapshot_at)], ['Install id', dev.install_id]]),
             dev.flags.length ? h('div', { class: 'flags', style: 'margin-top:8px' }, dev.flags.map(function (k) { return badge(FLAG_TEXT[k], 'warn'); })) : null]),
           card('Reported device facts', h('pre', { class: 'code' }, pretty(snap) || 'No health report yet.'))
         ]) : h('p', { class: 'muted' }, 'This device is not in the register (events only).'),

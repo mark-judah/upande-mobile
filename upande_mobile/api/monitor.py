@@ -101,7 +101,7 @@ MAX_PAGE = 200
 
 _STR_FACTS = (
 	"platform", "os_version", "os_build", "brand", "model", "device_name", "battery_state", "network_type",
-	"carrier", "wifi_ssid", "cellular_generation", "locale", "timezone", "orientation", "app_state", "color_scheme", "js_engine", "build_type",
+	"carrier", "wifi_ssid", "cellular_generation", "locale", "timezone", "orientation", "app_state", "color_scheme", "js_engine", "build_type", "kit_version",
 )
 _BOOL_FACTS = ("is_physical_device", "low_power_mode", "is_connected", "is_internet_reachable")
 _INT_FACTS = (
