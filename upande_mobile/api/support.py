@@ -4,6 +4,8 @@
 # People talking to the team from inside an app that uses @upande/mobile-kit.
 #
 #   submit_report   POST  "Report a problem": words, a screenshot and diagnostics   (signed in)
+#                         Filed as an ERPNext/Helpdesk **Issue** when the site has one (subject "[App] ...", the
+#                         screenshot attached to it), else as a Mobile Report.
 #   chat            GET   the person's conversation with support; `count_only` for the badge (signed in)
 #                   POST  one message from the person                                  (signed in)
 #   reports / report / set_report_status                                             (System Manager)
@@ -14,7 +16,9 @@
 
 import base64
 import binascii
+import html as htmllib
 import json
+import re
 
 import frappe
 from frappe import _
@@ -25,6 +29,9 @@ from upande_mobile.api.monitor import _monitored_app, _over_limit, clean_device
 from upande_mobile.redaction import redact_text, redact_url
 
 REPORT = "Mobile Report"
+ISSUE = "Issue"
+ISSUE_STATUSES = ("Open", "Replied", "On Hold", "Resolved", "Closed")
+DIAG_DIVIDER = "\u2014 \u2014 \u2014 Diagnostic details (attached automatically) \u2014 \u2014 \u2014"
 THREAD = "Mobile Chat Thread"
 MESSAGE = "Mobile Chat Message"
 
@@ -134,6 +141,58 @@ def clean_chat_text(value):
 
 
 # --------------------------------------------------------------------------- #
+# the Issue form of a report — pure
+# --------------------------------------------------------------------------- #
+
+
+def issue_subject(app, subject):
+	"""`[App] subject`, the convention support already works with."""
+	return f"[{app}] {subject}"[:140]
+
+
+def split_issue_subject(subject):
+	"""("App", "subject") from "[App] subject"; (None, subject) when it does not follow the convention."""
+	m = re.match(r"^\[([^\]]{1,64})\]\s*(.*)$", subject or "", re.S)
+	return (m.group(1), m.group(2)) if m else (None, subject or "")
+
+
+def issue_description(text, diagnostics):
+	"""The Issue's description: what the person wrote, a divider, then the diagnostics as readable JSON."""
+	body = htmllib.escape((text or "").strip()) or "(no description provided)"
+	blob = htmllib.escape(json.dumps(diagnostics or {}, indent=1, default=str, ensure_ascii=False))
+	return (
+		f"<p>{body.replace(chr(10), '<br>')}</p><p>{DIAG_DIVIDER}</p>"
+		f'<pre class="mobile-diagnostics">{blob}</pre>'
+	)
+
+
+def parse_issue_description(description):
+	"""(text, diagnostics dict) back out of an Issue description written by `issue_description` (or by hand)."""
+	raw = description or ""
+	m = re.search(r"<pre[^>]*>(.*?)</pre>", raw, re.S)
+	diagnostics = {}
+	if m:
+		try:
+			parsed = json.loads(htmllib.unescape(re.sub(r"<[^>]+>", "", m.group(1))))
+			diagnostics = parsed if isinstance(parsed, dict) else {}
+		except ValueError:
+			diagnostics = {}
+	before = raw.split(DIAG_DIVIDER)[0]
+	text = htmllib.unescape(re.sub(r"<[^>]+>", "", before.replace("<br>", "\n").replace("</p>", "\n"))).strip()
+	return ("" if text == "(no description provided)" else text), diagnostics
+
+
+def support_doctype():
+	"""Where reports go: the site's Issue doctype when it has one, else Mobile Report. `upande_mobile_support_doctype`
+	in site_config.json ("Issue" or "Mobile Report") overrides."""
+	chosen = frappe.conf.get("upande_mobile_support_doctype")
+	has_issue = bool(frappe.db.exists("DocType", ISSUE))
+	if chosen == REPORT or not has_issue:
+		return REPORT
+	return ISSUE
+
+
+# --------------------------------------------------------------------------- #
 # people
 # --------------------------------------------------------------------------- #
 
@@ -171,43 +230,54 @@ def submit_report(app=None, subject=None, description=None, install_id=None, dia
 	diag = clean_diagnostics(diagnostics)
 	device = diag.get("device") or {}
 	install_id = _text(install_id)
-	doc = frappe.get_doc(
-		{
-			"doctype": REPORT,
-			"app": app_name,
-			"subject": subject,
-			"description": redact_text(description, MAX_DESCRIPTION) if description else "",
-			"status": "Open",
-			"reporter": user,
-			"reporter_name": frappe.db.get_value("User", user, "full_name") or user,
-			"install_id": install_id if INSTALL_ID_PATTERN.match(install_id) else "",
-			"app_version": (diag.get("app") or {}).get("version") or "",
-			"runtime_version": (diag.get("app") or {}).get("runtime_version") or "",
-			"device_model": " ".join(x for x in (device.get("brand"), device.get("model")) if x),
-			"os_version": " ".join(x for x in (device.get("platform"), device.get("os_version")) if x),
-			"diagnostics": json.dumps(diag, default=str) if diag else None,
-			"last_crash": json.dumps(diag["last_crash"], default=str) if diag.get("last_crash") else None,
-		}
-	).insert(ignore_permissions=True)
+	if support_doctype() == ISSUE:
+		doc = frappe.get_doc(
+			{
+				"doctype": ISSUE,
+				"subject": issue_subject(app_name, subject),
+				"raised_by": frappe.db.get_value("User", user, "email") or user,
+				"description": issue_description(redact_text(description, MAX_DESCRIPTION) if description else "", diag),
+			}
+		).insert(ignore_permissions=True)
+	else:
+		doc = frappe.get_doc(
+			{
+				"doctype": REPORT,
+				"app": app_name,
+				"subject": subject,
+				"description": redact_text(description, MAX_DESCRIPTION) if description else "",
+				"status": "Open",
+				"reporter": user,
+				"reporter_name": frappe.db.get_value("User", user, "full_name") or user,
+				"install_id": install_id if INSTALL_ID_PATTERN.match(install_id) else "",
+				"app_version": (diag.get("app") or {}).get("version") or "",
+				"runtime_version": (diag.get("app") or {}).get("runtime_version") or "",
+				"device_model": " ".join(x for x in (device.get("brand"), device.get("model")) if x),
+				"os_version": " ".join(x for x in (device.get("platform"), device.get("os_version")) if x),
+				"diagnostics": json.dumps(diag, default=str) if diag else None,
+				"last_crash": json.dumps(diag["last_crash"], default=str) if diag.get("last_crash") else None,
+			}
+		).insert(ignore_permissions=True)
 	data = decode_screenshot(screenshot)
 	if data:
 		try:
-			saved = frappe.get_doc(
-				{
-					"doctype": "File",
-					"file_name": f"{doc.name}.jpg",
-					"attached_to_doctype": REPORT,
-					"attached_to_name": doc.name,
-					"attached_to_field": "screenshot",
-					"is_private": 1,
-					"content": data,
-				}
-			).insert(ignore_permissions=True)
-			doc.db_set("screenshot", saved.file_url, update_modified=False)
+			file_doc = {
+				"doctype": "File",
+				"file_name": f"{doc.name}.jpg",
+				"attached_to_doctype": doc.doctype,
+				"attached_to_name": doc.name,
+				"is_private": 1,
+				"content": data,
+			}
+			if doc.doctype == REPORT:
+				file_doc["attached_to_field"] = "screenshot"
+			saved = frappe.get_doc(file_doc).insert(ignore_permissions=True)
+			if doc.doctype == REPORT:
+				doc.db_set("screenshot", saved.file_url, update_modified=False)
 		except Exception:
 			# The report matters more than its picture.
 			frappe.log_error(title="Mobile report: screenshot not saved")
-	return {"report": doc.name}
+	return {"report": doc.name, "doctype": doc.doctype}
 
 
 def _thread_of(app_name, user, create):
@@ -286,44 +356,143 @@ def chat(app=None, text=None, since=None, count_only=None):
 # --------------------------------------------------------------------------- #
 
 
+def _is_issue(name):
+	return not str(name or "").startswith("MREP-")
+
+
+def _files_for(doctype, names):
+	"""Names (of `names`) that have a file attached, and the first image url per name."""
+	if not names:
+		return {}
+	rows = frappe.get_all(
+		"File",
+		filters={"attached_to_doctype": doctype, "attached_to_name": ["in", list(names)]},
+		fields=["attached_to_name", "file_url"],
+		order_by="creation asc",
+	)
+	out = {}
+	for r in rows:
+		out.setdefault(r["attached_to_name"], r["file_url"])
+	return out
+
+
+def _issue_row(row, files):
+	app, subject = split_issue_subject(row.get("subject"))
+	text, diag = parse_issue_description(row.get("description"))
+	device = diag.get("device") or {}
+	return {
+		"name": row["name"],
+		"doctype": ISSUE,
+		"app": app,
+		"subject": subject,
+		"status": row.get("status"),
+		"reporter": row.get("raised_by"),
+		"reporter_name": row.get("raised_by"),
+		"app_version": (diag.get("app") or {}).get("version") or "",
+		"device_model": " ".join(x for x in (device.get("brand"), device.get("model")) if x),
+		"os_version": " ".join(x for x in (device.get("platform"), device.get("os_version")) if x),
+		"creation": row.get("creation"),
+		"screenshot": files.get(row["name"]),
+	}
+
+
 @frappe.whitelist(methods=["GET"])
 def reports(app=None, status=None, search=None, start=0, page_length=25):
 	_require_manager()
+	page = min(max(cint(page_length) or 25, 1), 100)
+	start = max(cint(start), 0)
+	if support_doctype() == ISSUE:
+		apps = [_text(app)] if app else frappe.get_all("Mobile App", pluck="name")
+		if not apps:
+			return {"rows": [], "total": 0, "doctype": ISSUE, "statuses": list(ISSUE_STATUSES)}
+		or_filters = [["subject", "like", f"[{a}]%"] for a in apps]
+		filters = []
+		if status in ISSUE_STATUSES:
+			filters.append(["status", "=", status])
+		if search:
+			filters.append(["subject", "like", f"%{_text(search)[:60]}%"])
+		total = len(frappe.get_all(ISSUE, filters=filters, or_filters=or_filters, pluck="name", limit_page_length=0))
+		rows = frappe.get_all(
+			ISSUE,
+			filters=filters,
+			or_filters=or_filters,
+			fields=["name", "subject", "status", "raised_by", "creation", "description"],
+			order_by="creation desc",
+			start=start,
+			page_length=page,
+		)
+		files = _files_for(ISSUE, [r["name"] for r in rows])
+		return {"rows": [_issue_row(r, files) for r in rows], "total": total, "doctype": ISSUE, "statuses": list(ISSUE_STATUSES)}
+
 	filters = {}
 	if app:
 		filters["app"] = _text(app)
 	if status in REPORT_STATUSES:
 		filters["status"] = status
 	or_filters = [["subject", "like", f"%{_text(search)[:60]}%"], ["reporter_name", "like", f"%{_text(search)[:60]}%"]] if search else None
-	page = min(max(cint(page_length) or 25, 1), 100)
 	rows = frappe.get_all(
 		REPORT,
 		filters=filters,
 		or_filters=or_filters,
 		fields=["name", "app", "subject", "status", "reporter", "reporter_name", "app_version", "device_model", "os_version", "creation", "screenshot"],
 		order_by="creation desc",
-		start=max(cint(start), 0),
+		start=start,
 		page_length=page,
 	)
-	return {"rows": rows, "total": frappe.db.count(REPORT, filters=filters)}
+	return {"rows": rows, "total": frappe.db.count(REPORT, filters=filters), "doctype": REPORT, "statuses": list(REPORT_STATUSES)}
 
 
 @frappe.whitelist(methods=["GET"])
 def report(name):
 	_require_manager()
-	doc = frappe.get_doc(REPORT, name)
-	out = doc.as_dict()
-	for key in ("diagnostics", "last_crash"):
-		try:
-			out[key] = json.loads(doc.get(key)) if doc.get(key) else None
-		except ValueError:
-			out[key] = None
-	return out
+	if not _is_issue(name):
+		doc = frappe.get_doc(REPORT, name)
+		out = doc.as_dict()
+		for key in ("diagnostics", "last_crash"):
+			try:
+				out[key] = json.loads(doc.get(key)) if doc.get(key) else None
+			except ValueError:
+				out[key] = None
+		out.update({"doctype": REPORT, "statuses": list(REPORT_STATUSES), "desk_url": f"/app/mobile-report/{name}"})
+		return out
+	doc = frappe.get_doc(ISSUE, name)
+	app, subject = split_issue_subject(doc.subject)
+	text, diag = parse_issue_description(doc.description)
+	device = diag.get("device") or {}
+	files = _files_for(ISSUE, [name])
+	return {
+		"name": name,
+		"doctype": ISSUE,
+		"app": app,
+		"subject": subject,
+		"status": doc.status,
+		"statuses": list(ISSUE_STATUSES),
+		"reporter": doc.raised_by,
+		"reporter_name": doc.raised_by,
+		"creation": doc.creation,
+		"description": text,
+		"app_version": (diag.get("app") or {}).get("version") or "",
+		"runtime_version": (diag.get("app") or {}).get("runtime_version") or "",
+		"device_model": " ".join(x for x in (device.get("brand"), device.get("model")) if x),
+		"os_version": " ".join(x for x in (device.get("platform"), device.get("os_version")) if x),
+		"screenshot": files.get(name),
+		"diagnostics": diag or None,
+		"last_crash": diag.get("last_crash"),
+		"desk_url": f"/app/issue/{name}",
+	}
 
 
 @frappe.whitelist(methods=["POST"])
 def set_report_status(name, status):
 	_require_manager()
+	if _is_issue(name):
+		if status not in ISSUE_STATUSES:
+			frappe.throw(_("Unknown status."), frappe.ValidationError)
+		# Through the document, so the Issue's own rules (resolution date, SLA) run.
+		doc = frappe.get_doc(ISSUE, name)
+		doc.status = status
+		doc.save(ignore_permissions=True)
+		return {"name": name, "status": status}
 	if status not in REPORT_STATUSES:
 		frappe.throw(_("Unknown status."), frappe.ValidationError)
 	frappe.db.set_value(REPORT, name, "status", status)

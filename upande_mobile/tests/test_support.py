@@ -77,6 +77,54 @@ class TestCleaning(unittest.TestCase):
 		self.assertEqual(row, {"id": "m1", "from_staff": True, "text": "", "sent_at": "2026-11-02 10:00:00"})
 
 
+class TestIssueForm(unittest.TestCase):
+	def test_subject_follows_the_bracket_convention_and_round_trips(self):
+		self.assertEqual(sup.issue_subject("Mona Shelve", "Wrong length"), "[Mona Shelve] Wrong length")
+		self.assertEqual(sup.split_issue_subject("[Mona Shelve] Wrong length"), ("Mona Shelve", "Wrong length"))
+		self.assertEqual(sup.split_issue_subject("Plain issue"), (None, "Plain issue"))
+		self.assertEqual(len(sup.issue_subject("A", "x" * 500)), 140)
+
+	def test_description_holds_the_words_a_divider_and_the_diagnostics(self):
+		diag = {"app": {"name": "Farm", "version": "1.0.6"}, "device": {"brand": "Honeywell", "model": "EDA52"}, "x": "<b>&</b>"}
+		html = sup.issue_description("It <froze>\nsecond line", diag)
+		self.assertIn("It &lt;froze&gt;<br>second line", html)
+		self.assertIn("Diagnostic details (attached automatically)", html)
+		self.assertNotIn("<b>", html)  # nothing from the phone is ever live HTML
+		text, parsed = sup.parse_issue_description(html)
+		self.assertEqual(text, "It <froze>\nsecond line")
+		self.assertEqual(parsed, diag)
+
+	def test_an_empty_description_says_so_and_reads_back_empty(self):
+		html = sup.issue_description("  ", {})
+		self.assertIn("(no description provided)", html)
+		self.assertEqual(sup.parse_issue_description(html)[0], "")
+
+	def test_descriptions_written_by_hand_or_damaged_do_not_break_the_reader(self):
+		self.assertEqual(sup.parse_issue_description(None), ("", {}))
+		self.assertEqual(sup.parse_issue_description("<p>just words</p>"), ("just words", {}))
+		self.assertEqual(sup.parse_issue_description("<p>x</p><pre>{broken</pre>")[1], {})
+
+	def test_the_issue_doctype_is_used_when_the_site_has_it(self):
+		conf = MagicMock()
+		with patch.object(sup.frappe, "conf", conf), patch.object(sup.frappe, "db", MagicMock()) as db:
+			conf.get.return_value = None
+			db.exists.return_value = "Issue"
+			self.assertEqual(sup.support_doctype(), "Issue")
+			db.exists.return_value = None
+			self.assertEqual(sup.support_doctype(), "Mobile Report")
+			db.exists.return_value = "Issue"
+			conf.get.return_value = "Mobile Report"
+			self.assertEqual(sup.support_doctype(), "Mobile Report")
+
+	def test_an_issue_row_is_shaped_for_the_portal(self):
+		desc = sup.issue_description("froze", {"app": {"version": "1.0.6"}, "device": {"brand": "Honeywell", "model": "EDA52", "platform": "android", "os_version": "30"}})
+		row = sup._issue_row({"name": "ISS-2026-00214", "subject": "[Mona Shelve] Wrong length", "status": "Open", "raised_by": "a@b.c", "creation": "t", "description": desc}, {"ISS-2026-00214": "/private/files/x.jpg"})
+		self.assertEqual((row["app"], row["subject"], row["app_version"], row["device_model"], row["os_version"]), ("Mona Shelve", "Wrong length", "1.0.6", "Honeywell EDA52", "android 30"))
+		self.assertEqual(row["screenshot"], "/private/files/x.jpg")
+		self.assertTrue(sup._is_issue("ISS-2026-00214"))
+		self.assertFalse(sup._is_issue("MREP-00001"))
+
+
 class _Base(unittest.TestCase):
 	def setUp(self):
 		translate = patch.object(sup, "_", side_effect=lambda m: m)
@@ -116,6 +164,8 @@ class TestAccess(_Base):
 		with patch.object(sup.frappe, "get_roles", return_value=["System Manager"]), patch.object(sup.frappe, "throw", side_effect=_throw):
 			with self.assertRaises(frappe.ValidationError):
 				sup.set_report_status("MREP-1", "Banana")
+			with self.assertRaises(frappe.ValidationError):
+				sup.set_report_status("ISS-2026-00001", "In Progress")  # not an Issue status
 
 
 class TestChatFlow(_Base):

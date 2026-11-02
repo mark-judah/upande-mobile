@@ -600,7 +600,7 @@
   try { var th = localStorage.getItem('mm-theme'); if (th) document.documentElement.setAttribute('data-theme', th); } catch (e) { /* ignore */ }
 
   /* ---------- support: problem reports and chat ---------- */
-  var REPORT_BADGE = { 'Open': 'bad', 'In Progress': 'warn', 'Resolved': 'ok' };
+  var REPORT_BADGE = { 'Open': 'bad', 'In Progress': 'warn', 'On Hold': 'warn', 'Replied': 'info', 'Resolved': 'ok', 'Closed': 'ok' };
 
   function renderSupport(q) {
     var tab = q.get('tab') === 'chat' ? 'chat' : 'reports', start = Number(q.get('start')) || 0, status = q.get('status') || '';
@@ -625,15 +625,15 @@
     }
     return call('support.reports', { app: state.app, status: status, start: start, page_length: 25 }).then(function (d) {
       d.start = start; d.page_length = 25;
-      var filters = h('div', { class: 'tabs' }, [['', 'All'], ['Open', 'Open'], ['In Progress', 'In progress'], ['Resolved', 'Resolved']].map(function (t) {
+      var filters = h('div', { class: 'tabs' }, [['', 'All']].concat((d.statuses || []).map(function (st) { return [st, st]; })).map(function (t) {
         return h('button', { class: status === t[0] ? 'on' : '', type: 'button', onclick: function () { go('support', { tab: 'reports', status: t[0] }); } }, t[1]);
       }));
       var table = d.rows.length ? h('div', { class: 'table-wrap' }, h('table', {}, [
         h('thead', {}, h('tr', {}, ['Report', 'From', 'App', 'Device', 'Status', 'When'].map(function (t) { return h('th', {}, t); }))),
         h('tbody', {}, d.rows.map(function (r) {
           return h('tr', {}, [
-            h('td', {}, [h('a', { class: 'title', href: '#/report/' + encodeURIComponent(r.name) }, r.subject), h('div', { class: 'sub' }, r.name + (r.screenshot ? ' · screenshot' : ''))]),
-            h('td', {}, r.reporter_name || r.reporter), h('td', {}, [appLink(r.app), h('div', { class: 'sub' }, r.app_version || '')]),
+            h('td', {}, [h('a', { class: 'title', href: '#/report/' + encodeURIComponent(r.name) }, r.subject), h('div', { class: 'sub' }, r.name + (r.doctype === 'Issue' ? ' · Issue' : '') + (r.screenshot ? ' · screenshot' : ''))]),
+            h('td', {}, r.reporter_name || r.reporter), h('td', {}, [r.app ? appLink(r.app) : '—', h('div', { class: 'sub' }, r.app_version || '')]),
             h('td', {}, [r.device_model || '—', h('div', { class: 'sub' }, r.os_version || '')]),
             h('td', {}, badge(r.status, REPORT_BADGE[r.status])), h('td', { title: full(r.creation) }, when(r.creation))
           ]);
@@ -647,7 +647,7 @@
     return call('support.report', { name: name }).then(function (r) {
       var dg = r.diagnostics || {}, dev = dg.device || {}, calls = dg.recent_calls || [], crash = r.last_crash;
       function setStatus(st) { call('support.set_report_status', { name: name, status: st }, 'POST').then(function () { toast('Marked ' + st); route_(); }).catch(function (e) { toast(e.message); }); }
-      var actions = h('div', { class: 'filters' }, ['Open', 'In Progress', 'Resolved'].map(function (st) {
+      var actions = h('div', { class: 'filters' }, (r.statuses || []).map(function (st) {
         return h('button', { type: 'button', class: r.status === st ? 'primary' : '', onclick: function () { setStatus(st); } }, st);
       }));
       mount([
@@ -655,8 +655,9 @@
         h('h1', {}, r.subject),
         h('p', {}, [badge(r.status, REPORT_BADGE[r.status]), ' ', r.name, ' · ', when(r.creation)]),
         actions,
+        r.desk_url ? h('p', {}, h('a', { href: r.desk_url, target: '_blank', rel: 'noopener' }, 'Open the ' + (r.doctype === 'Issue' ? 'Issue' : 'report') + ' in Desk')) : null,
         h('div', { class: 'grid two' }, [
-          card('Report', [kv([['From', r.reporter_name || r.reporter], ['App', [appLink(r.app), ' ' + (r.app_version || '')]], ['Runtime', r.runtime_version], ['Device', r.device_model], ['OS', r.os_version], ['Install id', r.install_id]]),
+          card('Report', [kv([['From', r.reporter_name || r.reporter], ['App', [r.app ? appLink(r.app) : '—', ' ' + (r.app_version || '')]], ['Runtime', r.runtime_version], ['Device', r.device_model], ['OS', r.os_version], ['Install id', r.install_id]]),
             r.description ? h('p', { style: 'white-space:pre-wrap;margin-top:10px' }, r.description) : null]),
           card('Screenshot', r.screenshot ? h('a', { href: r.screenshot, target: '_blank', rel: 'noopener' }, h('img', { src: r.screenshot, alt: 'Screenshot from the phone', class: 'shot' })) : empty('No screenshot was attached.'))
         ]),

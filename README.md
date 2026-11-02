@@ -30,7 +30,7 @@ Every feature name links to its section.
 
 | Feature | What it does |
 |---|---|
-| [Problem reports](#problem-reports) | "Report a problem" from the app: a screenshot, device facts, the last requests and the last crash |
+| [Problem reports](#problem-reports) | "Report a problem" from the app, filed as an Issue (with the screenshot attached) where the site has one: device facts, the last requests and the last crash |
 | [Chat with support](#chat-with-support) | A conversation between a person and your team, answered from the portal |
 
 **Operations**
@@ -201,13 +201,23 @@ Problem reports and chat from the app's **Help** card, in the portal under **Sup
 
 ### Problem reports
 
-A report is a **Mobile Report** (named `MREP-00001`, System Manager access only):
+**Where a report goes.** On a site that has the **Issue** doctype (ERPNext or Helpdesk) a report is filed as an ordinary **Issue**, so it enters the workflow your support team already uses: numbering (`ISS-2026-00214`), SLA, assignment, status changes and replies by email. On a site without Issue it is filed as a **Mobile Report** instead. Set `upande_mobile_support_doctype` in `site_config.json` to `"Mobile Report"` to use that one even where Issue exists.
 
-- the subject and details the person wrote, the reporter, the app, the app and runtime versions, the device and the OS;
-- a **private screenshot** of the screen they were on, attached as a File (shown in the report; it must be a real JPEG of at most 1.5 MB, anything else is dropped and the report is still kept);
-- the **diagnostics** the phone attached: whitelisted device facts (including Wi-Fi and latency), the last 15 requests (addresses and status only, redacted), and **the last crash** (message, stack, whether it was fatal, the screen).
+**What an Issue contains.**
 
-Set the status to **Open**, **In Progress** or **Resolved** on the report's page. Limits: 10 reports per user per hour; subject 140 characters, details 5000; diagnostics 64 KB.
+| Part | How it is filled |
+|---|---|
+| Subject | `[App Name] what the person wrote`, for example `[Mona Shelve] Wrong length when traced`. The bracket is how the portal tells which app an Issue came from |
+| Raised By | The signed-in user's email |
+| Description | What the person wrote, then a divider line (`Diagnostic details (attached automatically)`), then the diagnostics as readable JSON |
+| Attachment | The **private screenshot** of the screen they were on, attached to the Issue (it shows in the Issue's attachments). It must be a real JPEG of at most 1.5 MB; anything else is dropped and the Issue is still created |
+| Everything else | Left to the Issue doctype's own defaults (status Open, SLA, series) |
+
+The **diagnostics** are whitelisted device facts (including Wi-Fi and latency), the last 15 requests (addresses and status only, redacted) and **the last crash** (message, stack, whether it was fatal, the screen). Everything from the phone is HTML-escaped before it goes into the description.
+
+**In the portal.** The Support page lists the Issues whose subject starts with a registered app's `[name]`, with the device, OS and app version read back from the diagnostics, the screenshot, and the Issue's own statuses (**Open, Replied, On Hold, Resolved, Closed**). Changing the status there saves the Issue through its document, so its own rules run. Every report links to the Issue in Desk. A Mobile Report keeps its own statuses (Open, In Progress, Resolved).
+
+Limits: 10 reports per user per hour; subject 140 characters, details 5000; diagnostics 64 KB.
 
 ### Chat with support
 
@@ -217,7 +227,7 @@ One **Mobile Chat Thread** per person per app, holding **Mobile Chat Message** r
 
 - Only signed-in users can submit or chat, and every row is filed under the session user, never one claimed in the request.
 - Diagnostics pass the same device whitelist and redaction as crash reports; free text in the details is redacted for token-shaped text.
-- Reports, threads and messages are readable by System Managers only.
+- The portal shows reports to System Managers only. An Issue keeps the permissions your Issue doctype already has; a Mobile Report, a chat thread and its messages are readable by System Managers only.
 
 ## App page
 
@@ -260,7 +270,7 @@ All paths are under `/api/method/`.
 | `upande_mobile.api.monitor.overview`, `issues`, `issue`, `events`, `devices` | GET | System Manager | Dashboard data |
 | `upande_mobile.api.monitor.app_overview?app=<name>` | GET | System Manager | Everything the [App page](#app-page) shows, in one call |
 | `upande_mobile.api.monitor.refresh_app` (`app`) | POST | System Manager | Re-read one app's latest OTA, APK and GitHub data now. At most once a minute per app; inside that minute it answers `{refreshed: false, retry_in}` |
-| `upande_mobile.api.support.submit_report` | POST | signed-in user | "Report a problem": subject, details, a base64 JPEG `screenshot` (at most 1.5 MB), `diagnostics` JSON. 10 per hour per user. Creates a *Mobile Report* |
+| `upande_mobile.api.support.submit_report` | POST | signed-in user | "Report a problem": subject, details, a base64 JPEG `screenshot` (at most 1.5 MB), `diagnostics` JSON. 10 per hour per user. Creates an Issue, or a Mobile Report where the site has no Issue, and returns `{report, doctype}` |
 | `upande_mobile.api.support.chat` | GET / POST | signed-in user | The person's conversation with support. `GET` returns messages (and marks replies read), `?count_only=1` returns the unread count; `POST` sends `text`. 60 messages per hour |
 | `upande_mobile.api.support.reports`, `report`, `set_report_status`, `chat_threads`, `chat_thread`, `chat_reply` | GET / POST | System Manager | The portal's Support page |
 | `upande_mobile.api.monitor.set_issue_status`, `purge_now` | POST | System Manager | Resolve or ignore an issue; delete expired events now |
@@ -274,6 +284,7 @@ All optional, in `site_config.json`.
 | `upande_mobile_ota_hosts` | Extra hosts allowed for an OTA Base URL (a list or a comma-separated string), beyond `*.github.io` and `raw.githubusercontent.com` |
 | `upande_mobile_runtime_major_base` | The `runtimeMajorBase` your apps set in `expo.extra.mobileKit` (default 0). Needed to rate devices correctly when an app uses an offset |
 | `upande_mobile_github_token` | A GitHub token for reading releases and workflow runs, to avoid the unauthenticated rate limit (60 per hour per IP). Read-only is enough. The older name `mobile_app_github_token` is still read when this one is not set |
+| `upande_mobile_support_doctype` | Where problem reports go: `"Issue"` or `"Mobile Report"`. Default: Issue when the site has it, else Mobile Report |
 | `upande_mobile_redact_keys` | Extra field names to redact in reports (a list or a comma-separated string) |
 | `upande_mobile_min_os` | What counts as an old OS, for example `{"android": 11, "ios": 17}` (defaults 10 and 16) |
 
@@ -313,6 +324,8 @@ bench restart
 | Reports are answered with `paused: true` | `monitoring_off`: Enable Monitoring is off. `unknown_app`: an invalid name, or 20 disabled auto-created apps already exist | Turn Enable Monitoring on; register the app or delete unused disabled ones |
 | Reports from before sign-in are refused | Guests are rejected unless the app allows them | Turn on Accept Reports Before Sign-in for that app |
 | Reports are answered with 429 | Rate limit | Wait a minute; phones back off by themselves |
+| A report is not an Issue | The site has no Issue doctype (no ERPNext or Helpdesk), or `upande_mobile_support_doctype` is `"Mobile Report"` | Install ERPNext/Helpdesk, or remove the setting |
+| An Issue is missing from the Support page | Its subject does not start with `[App Name]` of a registered app | Issues the app files always do; edit the subject, or register the app |
 | "Report a problem" or chat fails with a 404 or an unknown doctype error | The backend was updated without `bench migrate`, or is older than 0.2.0 | Update the app and run `bench --site your.site migrate`, then `bench restart` |
 | A problem report has no screenshot | The phone sent none (the kit needs `react-native-view-shot`), or it was not a JPEG or over 1.5 MB | Install `react-native-view-shot` in the app and make a new native build |
 | Support page is empty | Nobody has reported or written in yet, or the app selector filters to another app | Choose **All apps** |
