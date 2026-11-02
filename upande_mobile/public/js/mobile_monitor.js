@@ -610,6 +610,10 @@
     if (tab === 'chat') {
       return call('support.chat_threads', { app: state.app, start: start, page_length: 25 }).then(function (d) {
         d.start = start; d.page_length = 25;
+        if (d.mode === 'issue') {
+          mount([h('h1', {}, 'Support'), tabs, card(null, h('p', {}, ['On this site conversations are Issues. People write from the app, and you reply the way you already do: add a Comment on the Issue in Desk (', h('a', { href: '/app/issue', target: '_blank', rel: 'noopener' }, 'open the Issue list'), '). Their replies appear as comments on the same Issue.']))]);
+          return;
+        }
         var table = d.rows.length ? h('div', { class: 'table-wrap' }, h('table', {}, [
           h('thead', {}, h('tr', {}, ['Person', 'App', 'Last message', 'When', ''].map(function (t) { return h('th', {}, t); }))),
           h('tbody', {}, d.rows.map(function (r) {

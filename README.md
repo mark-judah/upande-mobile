@@ -31,7 +31,7 @@ Every feature name links to its section.
 | Feature | What it does |
 |---|---|
 | [Problem reports](#problem-reports) | "Report a problem" from the app, filed as an Issue (with the screenshot attached) where the site has one: device facts, the last requests and the last crash |
-| [Chat with support](#chat-with-support) | A conversation between a person and your team, answered from the portal |
+| [Chat with support](#chat-with-support) | The person's conversations with your team: their Issues, answered with a Comment on the Issue in Desk |
 
 **Operations**
 
@@ -221,7 +221,14 @@ Limits: 10 reports per user per hour; subject 140 characters, details 5000; diag
 
 ### Chat with support
 
-One **Mobile Chat Thread** per person per app, holding **Mobile Chat Message** rows. The person's messages count as unread for support; replies sent from the portal show in the app within seconds and count as unread for the person until the app fetches them. The portal's chat list shows unread counts, newest conversation first. Limits: 60 messages per user per hour, 2000 characters each.
+**On a site with Issues, a conversation is an Issue.** There is nothing new for your team to learn:
+
+- `threads` lists the signed-in person's Issues whose subject starts with `[App Name]` (newest first, 30), with the status, the newest activity, when support last answered, and a preview. `thread` returns one conversation: what the person wrote (read back from the description), then every **Comment** on the Issue, each marked from support or from the person. `reply` adds the person's answer as a Comment on the Issue; an Issue that was *Replied* or *Resolved* goes back to *Open*, and a *Closed* one refuses (the person starts a new one).
+- **Support replies the way they already do: a Comment on the Issue in Desk.** Only Comments appear in the app (an email reply or an internal note does not). The portal's Chat tab explains this instead of listing threads.
+- A person can only read and answer **their own** Issues (`raised_by` is their user or email); anything else is a permission error. Limits: 60 messages per user per hour, 2000 characters each.
+- Replies are not pushed to the phone. Harvest sends an Expo push from a DocType Event on Comment (tokens kept in a custom field on User); doing that here would need `expo-notifications` in the app, so it is left out for now.
+
+**On a site without the Issue doctype** the old single-thread chat is used: one **Mobile Chat Thread** per person per app holding **Mobile Chat Message** rows, answered from the portal's Chat tab (`chat`, `chat_threads`, `chat_thread`, `chat_reply`). The app learns which mode applies from `threads` (`mode: "issue"` or `"chat"`).
 
 ### How it is protected
 
@@ -271,7 +278,10 @@ All paths are under `/api/method/`.
 | `upande_mobile.api.monitor.app_overview?app=<name>` | GET | System Manager | Everything the [App page](#app-page) shows, in one call |
 | `upande_mobile.api.monitor.refresh_app` (`app`) | POST | System Manager | Re-read one app's latest OTA, APK and GitHub data now. At most once a minute per app; inside that minute it answers `{refreshed: false, retry_in}` |
 | `upande_mobile.api.support.submit_report` | POST | signed-in user | "Report a problem": subject, details, a base64 JPEG `screenshot` (at most 1.5 MB), `diagnostics` JSON. 10 per hour per user. Creates an Issue, or a Mobile Report where the site has no Issue, and returns `{report, doctype}` |
-| `upande_mobile.api.support.chat` | GET / POST | signed-in user | The person's conversation with support. `GET` returns messages (and marks replies read), `?count_only=1` returns the unread count; `POST` sends `text`. 60 messages per hour |
+| `upande_mobile.api.support.threads` (`app`) | GET | signed-in user | The person's conversations with support (their Issues for the app) and the chat `mode` |
+| `upande_mobile.api.support.thread` (`issue`) | GET | signed-in user | One conversation: their words, then the Comments on the Issue |
+| `upande_mobile.api.support.reply` (`issue`, `text`) | POST | signed-in user | The person answers on their Issue (adds a Comment). 60 per hour |
+| `upande_mobile.api.support.chat` | GET / POST | signed-in user | The single-thread chat for sites without an Issue doctype. `GET` returns messages (and marks replies read), `?count_only=1` the unread count; `POST` sends `text` |
 | `upande_mobile.api.support.reports`, `report`, `set_report_status`, `chat_threads`, `chat_thread`, `chat_reply` | GET / POST | System Manager | The portal's Support page |
 | `upande_mobile.api.monitor.set_issue_status`, `purge_now` | POST | System Manager | Resolve or ignore an issue; delete expired events now |
 
@@ -326,6 +336,7 @@ bench restart
 | Reports are answered with 429 | Rate limit | Wait a minute; phones back off by themselves |
 | A report is not an Issue | The site has no Issue doctype (no ERPNext or Helpdesk), or `upande_mobile_support_doctype` is `"Mobile Report"` | Install ERPNext/Helpdesk, or remove the setting |
 | An Issue is missing from the Support page | Its subject does not start with `[App Name]` of a registered app | Issues the app files always do; edit the subject, or register the app |
+| The person does not see a reply | The reply was an email or an internal note, not a **Comment** on the Issue | Add a Comment on the Issue in Desk |
 | "Report a problem" or chat fails with a 404 or an unknown doctype error | The backend was updated without `bench migrate`, or is older than 0.2.0 | Update the app and run `bench --site your.site migrate`, then `bench restart` |
 | A problem report has no screenshot | The phone sent none (the kit needs `react-native-view-shot`), or it was not a JPEG or over 1.5 MB | Install `react-native-view-shot` in the app and make a new native build |
 | Support page is empty | Nobody has reported or written in yet, or the app selector filters to another app | Choose **All apps** |

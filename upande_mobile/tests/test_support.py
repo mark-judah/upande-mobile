@@ -125,6 +125,42 @@ class TestIssueForm(unittest.TestCase):
 		self.assertFalse(sup._is_issue("MREP-00001"))
 
 
+class TestIssueThreads(unittest.TestCase):
+	issue = {"name": "ISS-1", "subject": "[Farm] Wrong length", "status": "Open", "creation": "2026-11-02 09:00:00", "description": sup.issue_description("60cm shows as 80cm", {})}
+	comments = [
+		{"name": "C1", "comment_email": "boss@x.y", "content": "<div class=\"ql-editor\"><p>Which bucket?</p></div>", "creation": "2026-11-02 09:30:00"},
+		{"name": "C2", "comment_email": "a@b.c", "content": "<p>Bucket 12</p>", "creation": "2026-11-02 09:40:00"},
+		{"name": "C3", "comment_email": "boss@x.y", "content": "<p>&nbsp;</p>", "creation": "2026-11-02 09:50:00"},
+	]
+
+	def test_plain_text_strips_html_and_keeps_line_breaks(self):
+		self.assertEqual(sup.plain_text("<p>a &amp; b</p><p>c<br>d</p>"), "a & b\nc\nd")
+		self.assertEqual(sup.plain_text(None), "")
+
+	def test_ownership_accepts_the_user_id_or_the_email_only(self):
+		self.assertTrue(sup.is_own_issue("a@b.c", "a@b.c", "a@b.c"))
+		self.assertTrue(sup.is_own_issue("a@b.c", "ann", "a@b.c"))
+		self.assertFalse(sup.is_own_issue("x@y.z", "a@b.c", "a@b.c"))
+		self.assertFalse(sup.is_own_issue(None, "a@b.c", "a@b.c"))
+
+	def test_a_conversation_starts_with_the_persons_words_then_each_real_comment(self):
+		m = sup.thread_messages(self.issue, self.comments, "ann", "a@b.c")
+		self.assertEqual([(x["text"], x["from_staff"]) for x in m], [("60cm shows as 80cm", False), ("Which bucket?", True), ("Bucket 12", False)])  # the empty comment is dropped
+
+	def test_an_issue_with_no_description_falls_back_to_the_subject(self):
+		m = sup.thread_messages({"name": "ISS-2", "subject": "[Farm] Slow scan", "description": None, "creation": "t"}, [], "ann", "a@b.c")
+		self.assertEqual(m[0]["text"], "Slow scan")
+
+	def test_the_list_row_shows_when_support_last_answered(self):
+		row = sup.thread_summary(self.issue, self.comments, "ann", "a@b.c")
+		self.assertEqual((row["id"], row["subject"], row["status"]), ("ISS-1", "Wrong length", "Open"))
+		self.assertEqual(row["last_staff_at"], "2026-11-02 09:30:00")  # the blank staff comment does not count
+		self.assertEqual(row["last_activity"], "2026-11-02 09:50:00")
+		none = sup.thread_summary(self.issue, [], "ann", "a@b.c")
+		self.assertIsNone(none["last_staff_at"])
+		self.assertEqual(none["preview"], "60cm shows as 80cm")
+
+
 class _Base(unittest.TestCase):
 	def setUp(self):
 		translate = patch.object(sup, "_", side_effect=lambda m: m)

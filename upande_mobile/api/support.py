@@ -6,8 +6,12 @@
 #   submit_report   POST  "Report a problem": words, a screenshot and diagnostics   (signed in)
 #                         Filed as an ERPNext/Helpdesk **Issue** when the site has one (subject "[App] ...", the
 #                         screenshot attached to it), else as a Mobile Report.
-#   chat            GET   the person's conversation with support; `count_only` for the badge (signed in)
-#                   POST  one message from the person                                  (signed in)
+#   threads         GET   the person's conversations with support (their Issues for this app)  (signed in)
+#   thread          GET   one conversation: what they wrote, then the comments on the Issue   (signed in)
+#   reply           POST  the person answers on the Issue (a Comment on it)                   (signed in)
+#                         Staff reply the way they already do: a Comment on the Issue in Desk. Sites without an
+#                         Issue doctype use the Mobile Chat doctypes through `chat` instead.
+#   chat            GET/POST  the single-thread chat for sites without Issue                  (signed in)
 #   reports / report / set_report_status                                             (System Manager)
 #   chat_threads / chat_thread / chat_reply                                          (System Manager)
 #
@@ -182,6 +186,44 @@ def parse_issue_description(description):
 	return ("" if text == "(no description provided)" else text), diagnostics
 
 
+def plain_text(html):
+	"""A Comment's HTML as plain text."""
+	text = re.sub(r"<(br|/p|/div|/li)\s*/?>", "\n", html or "", flags=re.I)
+	return htmllib.unescape(re.sub(r"<[^>]+>", "", text)).strip()
+
+
+def is_own_issue(raised_by, user, email):
+	"""Whether an Issue was raised by this signed-in person (Issues store the email)."""
+	return bool(raised_by) and raised_by in (user, email)
+
+
+def thread_messages(issue, comments, user, email):
+	"""A conversation as chat messages: the person's own words first, then each Comment (not by them = from support)."""
+	text, _diag = parse_issue_description(issue.get("description"))
+	first = {"id": issue.get("name"), "from_staff": False, "text": text or split_issue_subject(issue.get("subject"))[1], "sent_at": str(issue.get("creation") or "")}
+	out = [first]
+	for c in comments:
+		body = plain_text(c.get("content"))
+		if body:
+			out.append({"id": c.get("name"), "from_staff": not is_own_issue(c.get("comment_email"), user, email), "text": body, "sent_at": str(c.get("creation") or "")})
+	return out
+
+
+def thread_summary(issue, comments, user, email):
+	"""One row of the person's thread list: status, newest activity, and when support last answered."""
+	staff = [c for c in comments if not is_own_issue(c.get("comment_email"), user, email) and plain_text(c.get("content"))]
+	last = (comments[-1] if comments else None)
+	preview = plain_text(last.get("content")) if last else (parse_issue_description(issue.get("description"))[0] or "")
+	return {
+		"id": issue.get("name"),
+		"subject": split_issue_subject(issue.get("subject"))[1],
+		"status": issue.get("status"),
+		"last_activity": str((last or {}).get("creation") or issue.get("creation") or ""),
+		"last_staff_at": str(staff[-1].get("creation")) if staff else None,
+		"preview": preview[:120],
+	}
+
+
 def support_doctype():
 	"""Where reports go: the site's Issue doctype when it has one, else Mobile Report. `upande_mobile_support_doctype`
 	in site_config.json ("Issue" or "Mobile Report") overrides."""
@@ -318,6 +360,81 @@ def _add_message(thread, sender, text, from_staff):
 		update_modified=False,
 	)
 	return doc
+
+
+def _own_issue(name, user):
+	"""The Issue, if it is this person's; otherwise a permission error (never reveal other people's)."""
+	email = frappe.db.get_value("User", user, "email") or user
+	doc = frappe.get_doc(ISSUE, name)
+	if not is_own_issue(doc.raised_by, user, email):
+		frappe.throw(_("This conversation is not yours."), frappe.PermissionError)
+	return doc, email
+
+
+def _issue_comments(names):
+	if not names:
+		return {}
+	rows = frappe.get_all(
+		"Comment",
+		filters={"reference_doctype": ISSUE, "reference_name": ["in", list(names)], "comment_type": "Comment"},
+		fields=["name", "reference_name", "comment_email", "content", "creation"],
+		order_by="creation asc",
+		limit_page_length=0,
+	)
+	out = {}
+	for r in rows:
+		out.setdefault(r["reference_name"], []).append(r)
+	return out
+
+
+@frappe.whitelist(methods=["GET"])
+def threads(app=None):
+	"""The person's conversations: their Issues for this app, newest first. `mode` says which chat the site uses."""
+	user = _signed_in()
+	app_name = _app_row(app)
+	if support_doctype() != ISSUE:
+		return {"mode": "chat", "threads": []}
+	email = frappe.db.get_value("User", user, "email") or user
+	issues = frappe.get_all(
+		ISSUE,
+		filters=[["subject", "like", f"[{app_name}]%"]],
+		or_filters=[["raised_by", "=", user], ["raised_by", "=", email]],
+		fields=["name", "subject", "status", "creation", "description"],
+		order_by="modified desc",
+		page_length=30,
+	)
+	comments = _issue_comments([i["name"] for i in issues])
+	return {"mode": "issue", "threads": [thread_summary(i, comments.get(i["name"], []), user, email) for i in issues]}
+
+
+@frappe.whitelist(methods=["GET"])
+def thread(issue):
+	"""One conversation, oldest first."""
+	user = _signed_in()
+	doc, email = _own_issue(issue, user)
+	comments = _issue_comments([doc.name]).get(doc.name, [])
+	return {
+		"thread": {"id": doc.name, "subject": split_issue_subject(doc.subject)[1], "status": doc.status},
+		"messages": thread_messages(doc.as_dict(), comments, user, email),
+	}
+
+
+@frappe.whitelist(methods=["POST"])
+def reply(issue, text=None):
+	"""The person answers on their Issue. The answer is a Comment on it, so support sees it in the Issue's timeline."""
+	user = _signed_in()
+	doc, email = _own_issue(issue, user)
+	message = clean_chat_text(text)
+	if not message:
+		frappe.throw(_("Write a message first."), frappe.ValidationError)
+	if doc.status == "Closed":
+		frappe.throw(_("This conversation is closed. Start a new one."), frappe.ValidationError)
+	if _over_limit("chat", user, MESSAGES_PER_HOUR, 3600):
+		frappe.throw(_("Too many messages. Try again later."), frappe.TooManyRequestsError)
+	comment = doc.add_comment("Comment", message)
+	if doc.status in ("Replied", "Resolved"):
+		doc.db_set("status", "Open")  # the person wrote back: support has something to answer again
+	return {"id": comment.name, "from_staff": False, "text": message, "sent_at": str(comment.creation)}
 
 
 @frappe.whitelist(methods=["GET", "POST"])
@@ -502,6 +619,9 @@ def set_report_status(name, status):
 @frappe.whitelist(methods=["GET"])
 def chat_threads(app=None, start=0, page_length=25):
 	_require_manager()
+	if support_doctype() == ISSUE:
+		# Conversations are Issues: support answers as a Comment on the Issue in Desk, not here.
+		return {"mode": "issue", "rows": [], "total": 0, "unread": 0}
 	filters = {"app": _text(app)} if app else {}
 	rows = frappe.get_all(
 		THREAD,
@@ -511,7 +631,7 @@ def chat_threads(app=None, start=0, page_length=25):
 		start=max(cint(start), 0),
 		page_length=min(max(cint(page_length) or 25, 1), 100),
 	)
-	return {"rows": rows, "total": frappe.db.count(THREAD, filters=filters), "unread": cint(frappe.db.sql("select coalesce(sum(unread_staff),0) from `tabMobile Chat Thread`")[0][0])}
+	return {"mode": "chat", "rows": rows, "total": frappe.db.count(THREAD, filters=filters), "unread": cint(frappe.db.sql("select coalesce(sum(unread_staff),0) from `tabMobile Chat Thread`")[0][0])}
 
 
 @frappe.whitelist(methods=["GET"])
