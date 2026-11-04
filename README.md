@@ -188,6 +188,8 @@ Low battery is under 20%. Low storage is under 512 MB free or under 10% free. Ol
 
 Each device's latest report carries, in its stored snapshot, how the network treats the app: connection type, **latency to the site** (a tiny `GET /api/method/ping` the phone makes at most once a minute), **how long its own API calls take** (count, average and 95th percentile in milliseconds, share failed, over its last 100 calls) and, when the app has `@react-native-community/netinfo`, the **Wi-Fi name, signal, link speed and band** and the cellular generation. The Devices view shows them in the Connection column; the Device page and every event's device panel show the full set. All values are whitelisted, typed and range-checked before they are stored, and none of them adds a column to the register: they live in the device snapshot.
 
+**Device identifiers.** A device also reports its **build number**, its own **device IP** (the address it has on its network, separate from `IP Address`, the one the server saw), and, when the phone or the app can supply them, its **MAC address** and **serial number**. Android 10+ and iOS hide the last two from apps, so they are usually empty: placeholders (`02:00:00:00:00:00`, `unknown`) are dropped here as well as on the phone. All four are typed and checked, kept in the snapshot, and copied to the register row (`build_number`, `local_ip`, `mac_address`, `serial_number`), so the Devices view, the device page and Desk show them.
+
 ### Retention
 
 A daily job at 02:30 deletes events older than each app's Event Retention (default 30 days). Issues are kept. Delete now with `upande_mobile.api.monitor.purge_now`, optionally with `days` and `app`.

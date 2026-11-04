@@ -17,6 +17,10 @@
   "device_brand",
   "device_model",
   "device_name",
+  "build_number",
+  "local_ip",
+  "mac_address",
+  "serial_number",
   "is_physical_device",
   "versions_section",
   "os_version",
@@ -119,6 +123,34 @@
    "fieldname": "device_name",
    "fieldtype": "Data",
    "label": "Device Name"
+  },
+  {
+   "fieldname": "build_number",
+   "fieldtype": "Data",
+   "label": "Build Number",
+   "read_only": 1,
+   "description": "The installed app's build number (Android versionCode / iOS build)."
+  },
+  {
+   "fieldname": "local_ip",
+   "fieldtype": "Data",
+   "label": "Device IP",
+   "read_only": 1,
+   "description": "The address the phone has on its own network, as it reports it (the address the server saw is IP Address)."
+  },
+  {
+   "fieldname": "mac_address",
+   "fieldtype": "Data",
+   "label": "MAC Address",
+   "read_only": 1,
+   "description": "Only when the phone can give it: Android 10+ and iOS hide it from apps."
+  },
+  {
+   "fieldname": "serial_number",
+   "fieldtype": "Data",
+   "label": "Serial Number",
+   "read_only": 1,
+   "description": "Only when the phone can give it: Android 10+ and iOS hide it from apps. Managed handhelds can supply it."
   },
   {
    "fieldname": "is_physical_device",

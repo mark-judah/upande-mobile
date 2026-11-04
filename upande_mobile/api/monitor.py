@@ -103,6 +103,10 @@ _STR_FACTS = (
 	"platform", "os_version", "os_build", "brand", "model", "device_name", "battery_state", "network_type",
 	"carrier", "wifi_ssid", "cellular_generation", "locale", "timezone", "orientation", "app_state", "color_scheme", "js_engine", "build_type", "kit_version",
 )
+# What a phone can say about itself that identifies it. Each is checked: a placeholder the OS hands out (the fixed
+# 02:00:00:00:00:00 MAC, "unknown" for a serial) is not a fact and is dropped, never stored.
+_IDENTITY_FACTS = ("build_number", "local_ip", "mac_address", "serial_number")
+_NO_SERIAL = {"unknown", "null", "none", "n/a", "na", "0", "undefined", "not available", "to be filled by o.e.m."}
 _BOOL_FACTS = ("is_physical_device", "low_power_mode", "is_connected", "is_internet_reachable")
 _INT_FACTS = (
 	"storage_free_bytes", "storage_total_bytes", "memory_total_bytes",
@@ -156,12 +160,52 @@ def event_time(value, now_utc):
 	return parsed
 
 
+def clean_mac(value):
+	"""A MAC address as AA:BB:CC:DD:EE:FF, or "" for anything else (including the fixed placeholders Android and iOS return)."""
+	text = _text(value).upper().replace("-", ":")
+	if not re.match(r"^[0-9A-F]{2}(:[0-9A-F]{2}){5}$", text):
+		return ""
+	return "" if text in ("00:00:00:00:00:00", "02:00:00:00:00:00") else text
+
+
+def clean_ip(value):
+	"""An IPv4/IPv6 address as text, or "" (including 0.0.0.0, which means "none")."""
+	import ipaddress
+
+	try:
+		address = ipaddress.ip_address(_text(value))
+	except ValueError:
+		return ""
+	return "" if address.is_unspecified else str(address)
+
+
+def clean_serial(value):
+	text = _text(value)[:64]
+	if not text or text.lower() in _NO_SERIAL or not re.match(r"^[A-Za-z0-9._:/ -]+$", text):
+		return ""
+	return text
+
+
+def clean_build_number(value):
+	text = _text(value)[:20]
+	return text if re.match(r"^[0-9][0-9A-Za-z._-]*$", text) else ""
+
+
 def clean_device(raw):
 	"""The whitelisted, typed device facts. The hardware id is hashed here and never stored raw."""
 	raw = raw if isinstance(raw, dict) else {}
 	out = {}
 	for key in _STR_FACTS:
 		value = _clip(raw.get(key), 100)
+		if value:
+			out[key] = value
+	for key, cleaner in (
+		("build_number", clean_build_number),
+		("local_ip", clean_ip),
+		("mac_address", clean_mac),
+		("serial_number", clean_serial),
+	):
+		value = cleaner(raw.get(key))
 		if value:
 			out[key] = value
 	for key in _BOOL_FACTS:
@@ -626,6 +670,9 @@ def _write_snapshots(snapshots):
 				values[key] = device[key]
 		if device.get("network_type"):
 			values["network_type"] = device["network_type"]
+		for key in _IDENTITY_FACTS:
+			if device.get(key):
+				values[key] = device[key]
 		connectivity = connectivity_of(device)
 		if connectivity:
 			values["connectivity"] = connectivity

@@ -206,6 +206,24 @@ class TestCleanEvent(unittest.TestCase):
 		self.assertNotIn("bogus_speed", d)
 		self.assertNotIn("api_error_pct", mon.clean_device({"api_error_pct": ""}))
 
+	def test_identity_facts_are_kept_when_real_and_dropped_when_placeholders(self):
+		d = mon.clean_device(
+			{"build_number": "105100", "local_ip": "10.78.203.154", "mac_address": "a4:5e:60:c2:11:9f", "serial_number": "R58M123ABC"}
+		)
+		self.assertEqual(
+			(d["build_number"], d["local_ip"], d["mac_address"], d["serial_number"]),
+			("105100", "10.78.203.154", "A4:5E:60:C2:11:9F", "R58M123ABC"),
+		)
+		# what Android and iOS hand out instead of the real thing is not a fact
+		d = mon.clean_device({"mac_address": "02:00:00:00:00:00", "serial_number": "unknown", "local_ip": "0.0.0.0", "build_number": "<x>"})
+		for key in ("mac_address", "serial_number", "local_ip", "build_number"):
+			self.assertNotIn(key, d)
+		self.assertEqual(mon.clean_mac("A4-5E-60-C2-11-9F"), "A4:5E:60:C2:11:9F")
+		self.assertEqual(mon.clean_ip("fe80::1"), "fe80::1")
+		self.assertEqual(mon.clean_ip("not an ip"), "")
+		self.assertEqual(mon.clean_serial("<script>"), "")
+		self.assertEqual(mon.clean_serial("0"), "")
+
 	def test_missing_modules_kept_and_sanitised(self):
 		d = mon.clean_device({"missing_modules": ["expo-battery", "@react-native-async-storage/async-storage", "<script>", 7]})
 		self.assertEqual(d["missing_modules"], ["expo-battery", "@react-native-async-storage/async-storage"])
