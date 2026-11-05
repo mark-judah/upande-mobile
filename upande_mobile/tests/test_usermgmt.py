@@ -30,6 +30,9 @@ class TestProfiles(unittest.TestCase):
 		self.assertTrue(um.profile_is_assignable(["Stock User", "Sales User"]))
 		self.assertTrue(um.profile_is_assignable([]))
 
+	def test_profile_carrying_the_user_admin_role_is_not_assignable(self):
+		self.assertFalse(um.profile_is_assignable(["IT User Admin"]))
+
 	def test_clean_names(self):
 		self.assertEqual(um.clean_names('["A", " B ", "A", ""]'), ["A", "B"])
 		self.assertEqual(um.clean_names(["A", None and "x" or "A"]), ["A"])

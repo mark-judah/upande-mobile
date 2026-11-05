@@ -27,6 +27,7 @@ from frappe import _
 from frappe.utils import cint
 
 USER_ADMIN_ROLE = "IT User Admin"
+USER_ADMIN_PROFILE = "IT User Admin"
 FORBIDDEN_ROLES = ("System Manager", "Script Manager", "Administrator", "Guest", "All")
 PROTECTED_USERS = ("Administrator", "Guest")
 DEVELOPER_DOMAIN = "upande"
@@ -51,8 +52,9 @@ def lock_reason(user, holds_forbidden, caller_is_sm, caller=None):
 
 
 def profile_is_assignable(roles):
-	"""A role profile can be handed out from here only when none of its roles is a code or system role."""
-	return not any(r in FORBIDDEN_ROLES for r in roles or [])
+	"""A role profile can be handed out from here only when none of its roles is a code or system role, or the
+	user-admin role itself (only a System Manager hands out the right to manage users)."""
+	return not any(r in FORBIDDEN_ROLES or r == USER_ADMIN_ROLE for r in roles or [])
 
 
 def clean_names(values):
@@ -87,9 +89,15 @@ def _require_admin():
 
 
 def ensure_role():
-	"""Create the IT User Admin role (idempotent, run after migrate)."""
+	"""Create the IT User Admin role and the role profile that carries it (idempotent, run after migrate). Give the
+	IT team the PROFILE; the role is what the checks look for."""
 	if not frappe.db.exists("Role", USER_ADMIN_ROLE):
 		frappe.get_doc({"doctype": "Role", "role_name": USER_ADMIN_ROLE, "desk_access": 1}).insert(ignore_permissions=True)
+	if not frappe.db.exists("Role Profile", USER_ADMIN_PROFILE):
+		doc = frappe.new_doc("Role Profile")
+		doc.role_profile = USER_ADMIN_PROFILE
+		doc.append("roles", {"role": USER_ADMIN_ROLE})
+		doc.insert(ignore_permissions=True)
 
 
 # --------------------------------------------------------------------------- #
