@@ -316,14 +316,6 @@
       var by = {};
       d.cards.forEach(function (c) { by[c.key] = c.count; });
       ['updates', 'support', 'crashlytics'].forEach(function (k) { setCount(k, by[k] || 0); });
-      var tileList = d.cards.map(function (c) {
-        var t = cardCopy(c);
-        return h('a', { class: 'ph-tile is-link', href: '#/' + c.route }, [
-          h('div', { class: 'ph-tile__head' }, [h('div', {}, [h('div', { class: 'ph-tile__name' }, t[0]), h('div', { class: 'ph-tile__sub' }, t[1])]), badge(c.severity === 'high' ? 'Act now' : c.severity === 'medium' ? 'Soon' : 'Keep an eye', c.severity === 'high' ? 'bad' : c.severity === 'medium' ? 'warn' : 'signal')]),
-          h('div', { class: 'ph-kpi__value' }, String(c.count)),
-          h('div', { class: 'ph-muted', style: 'font-size:12px' }, t[2] + ' →')
-        ]);
-      });
       var mixParts = [{ key: 'current', label: 'Up to date', color: 'var(--good)' }, { key: 'behind', label: 'Behind', color: 'var(--warn)' }, { key: 'away', label: 'Not seen lately', color: 'var(--ink-faint)' }, { key: 'unknown', label: 'Unknown', color: 'var(--hairline-3)' }];
       var mixRows = Object.keys(s.app_mix).sort().map(function (k) { return { label: k, segs: s.app_mix[k] }; });
       var kindParts = [{ key: 'crash', label: 'Crashes', color: 'var(--bad)' }, { key: 'error', label: 'Errors', color: 'var(--warn)' }, { key: 'api', label: 'API failures', color: 'var(--signal)' }, { key: 'log', label: 'Logs', color: 'var(--ink-faint)' }];
@@ -331,7 +323,7 @@
       var tk = s.tickets_by_status;
       var healthRows = [['low_battery', 'Low battery'], ['low_storage', 'Low storage'], ['offline', 'Offline'], ['outdated_os', 'Old system'], ['outdated_app', 'Old app']].map(function (x) { return { label: x[1], value: s.health[x[0]] || 0, cls: x[0] === 'outdated_app' ? 'mid' : 'low' }; });
       mount([
-        head('IT dashboard', 'Overview', plural(s.apps_total, 'app') + ' · ' + plural(s.people, 'person', 'people') + ' · ' + plural(s.devices_active, 'device') + '. What needs attention is at the bottom.'),
+        head('IT dashboard', 'Overview', plural(s.apps_total, 'app') + ' · ' + plural(s.people, 'person', 'people') + ' · ' + plural(s.devices_active, 'device') + '.'),
         filters([appSelect()]),
         kpis([
           stat('People', s.people, s.people_current + ' on the current version'),
@@ -349,8 +341,7 @@
             card('Support tickets', plural(s.tickets_total, 'ticket'), s.tickets_total ? h('div', { class: 'ph-flex', style: 'gap:var(--sp-5)' }, [donut([{ label: 'Waiting', value: tk.waiting, color: 'var(--bad)' }, { label: 'Answered', value: tk.answered, color: 'var(--signal)' }, { label: 'Resolved', value: tk.resolved, color: 'var(--good)' }], String(s.tickets_total), 'tickets'), h('div', { class: 'ph-grow' }, [['Waiting', tk.waiting, 'var(--bad)'], ['Answered', tk.answered, 'var(--signal)'], ['Resolved', tk.resolved, 'var(--good)']].map(function (x) { return h('div', { class: 'ph-flex ph-flex--between', style: 'padding:4px 0' }, [h('span', { class: 'ph-flex', style: 'gap:8px' }, [h('i', { style: 'width:10px;height:10px;border-radius:3px;display:inline-block;background:' + x[2] }), x[0]]), h('b', {}, String(x[1]))]); }))]) : empty('No tickets yet')),
             card('Device health', '', hbars(healthRows))
           ])
-        ]),
-        d.cards.length ? card('Needs attention', '', h('div', { class: 'ph-tiles ph-tiles--sm' }, tileList)) : card('Needs attention', '', empty('All clear', 'Nobody is waiting, nothing is broken and everyone is up to date.'))
+        ])
       ]);
     });
   }
