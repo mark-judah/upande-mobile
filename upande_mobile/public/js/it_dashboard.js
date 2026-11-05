@@ -166,7 +166,7 @@
   }
 
   /* ---------- routing ---------- */
-  var TITLES = { overview: 'Overview', updates: 'Updates', devices: 'Devices', crashlytics: 'Crashlytics', support: 'Support', apps: 'Apps' };
+  var TITLES = { overview: 'Overview', updates: 'Updates', devices: 'Devices', crashlytics: 'Crashlytics', support: 'Support', apps: 'Apps', users: 'User management' };
   function route() {
     var p = (location.hash || '#/overview').slice(2).split('?');
     return { parts: p[0].split('/').map(decodeURIComponent), q: new URLSearchParams(p[1] || '') };
@@ -200,7 +200,7 @@
     var pg = document.querySelector('.ph-page');
     if (pg) pg.classList.toggle('ph-page--wide', key === 'support');
     root.classList.remove('is-drawer-open');
-    var screens = { overview: overview, updates: updates, devices: devices, crashlytics: crashlytics, support: support, apps: apps };
+    var screens = { overview: overview, updates: updates, devices: devices, crashlytics: crashlytics, support: support, apps: apps, users: users };
     Promise.resolve(screens[key](r)).then(markUpdated).catch(function (e) { mount(errState(e)); });
     if (key !== 'overview') refreshCounts();
   }
@@ -474,6 +474,127 @@
   }
 
   /* ---------- Crashlytics ---------- */
+  /* ---------- User management ---------- */
+  var USERS = boot.getAttribute('data-users') === '1';
+  function profileChips(list, locked) {
+    return list.length ? list.map(function (p) { return badge(p, locked ? '' : 'signal'); }) : h('span', { class: 'ph-muted' }, 'No role profile');
+  }
+  function users(r) {
+    if (!USERS) return Promise.reject(new Error('User management is for IT User Admins and System Managers only.'));
+    var status = r.q.get('status') || '', profile = r.q.get('profile') || '', q = r.q.get('search') || '';
+    return Promise.all([call('usermgmt.meta'), call('usermgmt.users', { status: status, profile: profile, search: q })]).then(function (res) {
+      var m = res[0], d = res[1], s = d.summary;
+      function nav(over) { var o = { status: status, profile: profile, search: q }; Object.keys(over).forEach(function (k) { o[k] = over[k]; }); go('users?' + qs(o)); }
+      var rows = d.rows.map(function (x) {
+        function open() { openUser(x.name, m); }
+        return h('tr', { class: 'is-link', tabindex: 0, onclick: open, onkeydown: function (e) { if (e.key === 'Enter') open(); } }, [
+          h('td', {}, who(x.full_name, x.name)),
+          h('td', {}, h('div', { class: 'ph-flex ph-flex--wrap' }, profileChips(x.profiles, !!x.locked))),
+          h('td', {}, x.locked ? badge('Managed in Desk', '') : x.enabled ? badge('Active', 'good') : badge('Disabled', 'bad')),
+          h('td', {}, x.last_active ? ago(x.last_active) : h('span', { class: 'ph-muted' }, 'never')),
+          h('td', {}, dateOnly(x.created))
+        ]);
+      });
+      var cols = [{ label: 'Person' }, { label: 'Role profiles' }, { label: 'Status' }, { label: 'Last active' }, { label: 'Added' }];
+      var add = h('button', { class: 'ph-btn ph-btn--primary', type: 'button', onclick: function () { openAddUser(m); } }, 'Add user');
+      mount([
+        head('IT dashboard · User management', 'People and access', 'Add people, change their details, turn accounts on or off and give them role profiles. A role profile is a ready-made set of permissions. System roles are never handed out from here.', add),
+        filters([
+          pills([['', 'All', s.active + s.disabled], ['active', 'Active', s.active], ['disabled', 'Disabled', s.disabled]], status, function (v) { nav({ status: v }); }),
+          select([['', 'Any role profile'], ['none', 'No role profile']].concat(m.profiles.map(function (p) { return [p.name, p.name + ' (' + p.users + ')']; })), profile, function (v) { nav({ profile: v }); }, 'Role profile'),
+          search('Search name or email', q, function (v) { nav({ search: v }); })
+        ]),
+        card('', '', rows.length ? table(cols, rows) : empty('No people match'), true)
+      ]);
+    });
+  }
+  function field(label, control, hint) { return h('div', { class: 'ph-field' }, [h('label', {}, label), control, hint ? h('div', { class: 'ph-field__hint' }, hint) : null]); }
+  function input(attrs) { return h('input', Object.assign({ class: 'ph-control', autocomplete: 'off' }, attrs)); }
+  function profileChecks(m, picked) {
+    var boxes = [];
+    var wrap = h('div', { class: 'ph-stack', style: 'gap:var(--sp-2)' }, m.profiles.map(function (p) {
+      var cb = h('input', { type: 'checkbox', value: p.name, disabled: !p.assignable });
+      cb.checked = picked.indexOf(p.name) >= 0;
+      boxes.push(cb);
+      return h('label', { class: 'ph-flex', style: 'gap:var(--sp-3);align-items:flex-start;' + (p.assignable ? '' : 'opacity:.55') }, [cb, h('span', {}, [h('span', { class: 'ph-strong' }, p.name), h('span', { class: 'ph-muted', style: 'font-size:12px;display:block' }, p.assignable ? (p.roles.join(', ') || 'No roles') : 'Includes a system role, so it cannot be given from here.')])]);
+    }));
+    wrap.value = function () { return boxes.filter(function (b) { return b.checked; }).map(function (b) { return b.value; }); };
+    return wrap;
+  }
+  function openAddUser(m) {
+    var email = input({ type: 'email', placeholder: 'name@company.com' });
+    var name = input({ type: 'text', placeholder: 'Full name' });
+    var pw = input({ type: 'text', placeholder: 'Temporary password' });
+    var checks = profileChecks(m, []);
+    var close;
+    var go_ = h('button', { class: 'ph-btn ph-btn--primary', type: 'button', onclick: function () {
+      go_.disabled = true;
+      call('usermgmt.create', { email: email.value, full_name: name.value, password: pw.value, role_profiles: JSON.stringify(checks.value()) }, true).then(function (res) { toast('Added ' + res.name, 'good'); close(); render(); }).catch(function (e) { go_.disabled = false; fail(e); });
+    } }, 'Add user');
+    close = drawer('Add user', 'They sign in with this password. Ask them to change it.', h('div', { class: 'ph-stack ph-stack--lg' }, [
+      field('Email', email), field('Full name', name), field('Password', pw, 'Use at least 8 characters, with letters and numbers.'),
+      field('Role profiles', checks, 'Pick what they need to do. You can change this later.'), h('div', {}, go_)
+    ]));
+  }
+  function openUser(id, m) {
+    var close = drawer('Loading…', '', h('div', { class: 'ph-muted' }, 'Loading…'));
+    call('usermgmt.detail', { name: id }).then(function (u) { close(); showUser(u, m); }).catch(function (e) { close(); fail(e); });
+  }
+  function showUser(u, m) {
+    var close;
+    function reopen() { render(); openUser(u.name, m); }
+    var body = h('div', { class: 'ph-stack ph-stack--lg' });
+    body.appendChild(h('div', { class: 'ph-flex ph-flex--wrap' }, [u.locked ? badge('Managed in Desk', '') : u.enabled ? badge('Active', 'good') : badge('Disabled', 'bad')].concat(u.is_me ? [badge('You', 'signal')] : [])));
+    if (u.locked) {
+      body.appendChild(h('div', { class: 'ph-muted' }, u.locked));
+      body.appendChild(kvList([['Email', u.name], ['Role profiles', u.profiles.join(', ')], ['Roles', u.roles.join(', ')], ['Last active', u.last_active ? ago(u.last_active) : 'never']]));
+      close = drawer(u.full_name, u.name, body);
+      return;
+    }
+    var nm = input({ type: 'text', value: u.full_name });
+    var en = select([['1', 'Active — can sign in'], ['0', 'Disabled — cannot sign in']], u.enabled ? '1' : '0', function () {}, 'Account status');
+    body.appendChild(field('Full name', nm));
+    body.appendChild(field('Account', en, u.is_me ? 'You cannot disable your own account.' : ''));
+    body.appendChild(h('div', {}, h('button', { class: 'ph-btn ph-btn--primary', type: 'button', onclick: function () {
+      call('usermgmt.update', { name: u.name, full_name: nm.value, enabled: en.value }, true).then(function () { toast('Saved', 'good'); close(); reopen(); }).catch(fail);
+    } }, 'Save')));
+    // role profiles: add one, take one away
+    var have = {};
+    u.profiles.forEach(function (p) { have[p] = 1; });
+    var list = h('div', {}, u.profiles.length ? u.profiles.map(function (p) {
+      return h('div', { class: 'ph-flex ph-flex--between', style: 'padding:var(--sp-2) 0;border-bottom:1px solid var(--hairline)' }, [
+        h('span', { class: 'ph-strong' }, p),
+        u.is_me ? null : h('button', { class: 'ph-btn ph-btn--ghost', type: 'button', onclick: function () {
+          if (!confirm('Take ' + p + ' away from ' + u.full_name + '?')) return;
+          call('usermgmt.remove_role_profile', { name: u.name, role_profile: p }, true).then(function () { toast('Removed ' + p, 'good'); close(); reopen(); }).catch(fail);
+        } }, 'Remove')
+      ]);
+    }) : h('div', { class: 'ph-muted' }, 'No role profile, so no access yet.'));
+    var avail = m.profiles.filter(function (p) { return p.assignable && !have[p.name]; });
+    var pick = select([['', 'Add a role profile…']].concat(avail.map(function (p) { return [p.name, p.name]; })), '', function () {}, 'Role profile to add');
+    var section = [h('div', { class: 'ph-label' }, 'Role profiles'), list];
+    if (!u.is_me) section.push(h('div', { class: 'ph-flex', style: 'margin-top:var(--sp-3);gap:var(--sp-3)' }, [pick, h('button', { class: 'ph-btn', type: 'button', onclick: function () {
+      if (!pick.value) return;
+      call('usermgmt.add_role_profile', { name: u.name, role_profile: pick.value }, true).then(function () { toast('Added ' + pick.value, 'good'); close(); reopen(); }).catch(fail);
+    } }, 'Add')]));
+    else section.push(h('div', { class: 'ph-field__hint' }, 'You cannot change your own role profiles.'));
+    body.appendChild(h('div', {}, section));
+    body.appendChild(h('div', {}, [h('div', { class: 'ph-label', style: 'margin-bottom:var(--sp-2)' }, 'What they can do'), u.roles.length ? h('div', { class: 'ph-flex ph-flex--wrap' }, u.roles.map(function (r) { return badge(r, ''); })) : h('div', { class: 'ph-muted' }, 'No roles.')]));
+    body.appendChild(kvList([['Email', u.name], ['Last active', u.last_active ? ago(u.last_active) : 'never'], ['Added', dateOnly(u.created)]]));
+    // password
+    var pw = input({ type: 'text', placeholder: 'New password' });
+    body.appendChild(h('div', {}, [h('div', { class: 'ph-label', style: 'margin-bottom:var(--sp-2)' }, 'Reset password'), h('div', { class: 'ph-flex', style: 'gap:var(--sp-3)' }, [pw, h('button', { class: 'ph-btn', type: 'button', onclick: function () {
+      if (!pw.value) return;
+      call('usermgmt.reset_password', { name: u.name, password: pw.value }, true).then(function () { toast('Password changed', 'good'); pw.value = ''; }).catch(fail);
+    } }, 'Set')])]));
+    if (u.history.length) body.appendChild(h('div', {}, [h('div', { class: 'ph-label', style: 'margin-bottom:var(--sp-2)' }, 'What IT changed'), h('div', {}, u.history.map(function (x) { return h('div', { style: 'padding:var(--sp-2) 0;border-bottom:1px solid var(--hairline)' }, [h('div', {}, x.text), h('div', { class: 'ph-muted', style: 'font-size:12px' }, ago(x.at))]); }))]));
+    if (!u.is_me) body.appendChild(h('div', { style: 'padding-top:var(--sp-4);border-top:1px solid var(--hairline)' }, [h('button', { class: 'ph-btn ph-btn--danger', type: 'button', onclick: function () {
+      if (!confirm('Delete ' + u.full_name + ' (' + u.name + ')? This cannot be undone. To keep their history, disable the account instead.')) return;
+      call('usermgmt.delete', { name: u.name }, true).then(function () { toast('Deleted ' + u.name, 'good'); close(); render(); }).catch(fail);
+    } }, 'Delete user')]));
+    close = drawer(u.full_name, u.name, body);
+  }
+
   var KIND_BADGE = { crash: 'bad', error: 'warn', api: 'signal', log: '' };
   function crashlytics(r) {
     var status = r.q.get('status') || 'Open', kind = r.q.get('kind') || '', q = r.q.get('search') || '';

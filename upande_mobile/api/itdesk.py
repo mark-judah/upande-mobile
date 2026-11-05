@@ -41,7 +41,7 @@ BEHIND = ("behind_ota", "needs_apk")
 
 def can_use(roles=None):
 	roles = roles if roles is not None else frappe.get_roles()
-	return "System Manager" in roles or IT_ROLE in roles
+	return "System Manager" in roles or IT_ROLE in roles or "IT User Admin" in roles
 
 
 def is_developer(roles=None):
@@ -58,6 +58,9 @@ def ensure_role():
 	"""Create the IT Support role (idempotent, run after migrate)."""
 	if not frappe.db.exists("Role", IT_ROLE):
 		frappe.get_doc({"doctype": "Role", "role_name": IT_ROLE, "desk_access": 1}).insert(ignore_permissions=True)
+	from upande_mobile.api import usermgmt
+
+	usermgmt.ensure_role()
 
 
 # --------------------------------------------------------------------------- #

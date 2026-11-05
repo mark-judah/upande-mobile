@@ -21,6 +21,7 @@ ICONS = {
 	"grid": '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>',
 	"download": '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
 	"menu": '<line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>',
+	"users": '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
 	"sidebar": '<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/>',
 }
 
@@ -32,6 +33,7 @@ DASHBOARD = [
 	("support", "Support", "/mobile-monitor#/support", "chat"),
 	("apps", "Apps", "/mobile-monitor#/apps", "grid"),
 ]
+USER_MANAGEMENT = ("users", "User management", "/mobile-monitor#/users", "users")
 STORE = [("store", "App store", "/app-store", "download")]
 
 
@@ -41,6 +43,7 @@ def page_context(context, active, title, path):
 		frappe.local.flags.redirect_location = "/login?" + urlencode({"redirect-to": path})
 		raise frappe.Redirect(302)
 	from upande_mobile.api.itdesk import can_use, is_developer
+	from upande_mobile.api.usermgmt import can_manage
 
 	it = can_use()
 	context.no_cache = 1
@@ -51,7 +54,9 @@ def page_context(context, active, title, path):
 	context.itd_title = title
 	context.itd_is_it = 1 if it else 0
 	context.developer = 1 if is_developer() else 0
-	context.itd_nav = ([("IT dashboard", DASHBOARD)] if it else []) + [("Install", STORE)]
+	manage = can_manage()
+	context.itd_users = 1 if manage else 0
+	context.itd_nav = ([("IT dashboard", DASHBOARD + ([USER_MANAGEMENT] if manage else []))] if it else []) + [("Install", STORE)]
 	context.itd_icons = ICONS
 	user = frappe.session.user
 	full = frappe.utils.get_fullname(user)
