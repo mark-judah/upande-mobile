@@ -90,8 +90,8 @@
 
   /* ---------- design-system components ---------- */
   function badge(text, kind) { return h('span', { class: 'ph-badge' + (kind ? ' ph-badge--' + kind : '') }, text); }
-  function head(eyebrow, title, sub) {
-    return h('header', { class: 'ph-head' }, [h('div', {}, [h('div', { class: 'ph-head__eyebrow' }, eyebrow), h('h1', { class: 'ph-head__title' }, title), sub ? h('p', { class: 'ph-head__sub' }, sub) : null])]);
+  function head(eyebrow, title, sub, tools) {
+    return h('header', { class: 'ph-head' }, [h('div', {}, [h('div', { class: 'ph-head__eyebrow' }, eyebrow), h('h1', { class: 'ph-head__title' }, title), sub ? h('p', { class: 'ph-head__sub' }, sub) : null]), tools ? h('div', { class: 'ph-head__tools' }, tools) : null]);
   }
   function kpis(list) {
     return h('section', { class: 'ph-kpis' }, list.map(function (k) {
@@ -657,7 +657,7 @@
       });
       var cols = [{ label: 'App' }, { label: 'On current version' }, { label: 'People', num: true }, { label: 'Behind', num: true }, { label: 'Away', num: true }, { label: 'Issues', num: true }, { label: 'Open tickets', num: true }];
       mount([
-        head('IT dashboard · Apps', 'Your apps', 'Adoption is the share of people on the current version.'),
+        head('IT dashboard · Apps', 'Your apps', 'Adoption is the share of people on the current version.', [checkButton(render)]),
         kpis([{ label: 'Apps', value: d.rows.length }, { label: 'People', value: tot.people }, { label: 'Behind', value: tot.behind }, { label: 'Open tickets', value: tot.tickets }]),
         card('', '', rows.length ? table(cols, rows) : empty('No apps are registered yet'), true)
       ]);
@@ -684,6 +684,22 @@
       });
     }).catch(function (e) { clear(body); body.appendChild(errState(e)); });
   }
+  function checkButton(after) {
+    var btn = h('button', { class: 'ph-btn ph-btn--primary', type: 'button', onclick: function () {
+      var before = {};
+      btn.disabled = true;
+      btn.textContent = 'Checking…';
+      call('store.apps').then(function (d) { d.apps.forEach(function (a) { before[a.app] = a.version; }); }).catch(function () { /* compare against nothing */ }).then(function () {
+        return call('store.check_updates', {}, true);
+      }).then(function (res) {
+        var changed = res.apps.filter(function (a) { return before[a.app] && before[a.app] !== a.version; }).map(function (a) { return a.app + ' ' + a.version; });
+        if (!res.refreshed) toast('Checked a moment ago. Try again in ' + res.retry_in + ' s.', 'warn');
+        else toast(changed.length ? 'New: ' + changed.join(', ') : 'Everything is up to date.', 'good');
+        after();
+      }).catch(function (e) { fail(e); btn.disabled = false; btn.textContent = 'Check for updates'; });
+    } }, 'Check for updates');
+    return btn;
+  }
   function store() {
     return call('store.apps').then(function (d) {
       var tiles = d.apps.map(function (a) {
@@ -701,7 +717,7 @@
         ]);
       });
       mount([
-        head('Install', 'App store', 'The newest version of every app. Download it on your phone and open the file to install.'),
+        head('Install', 'App store', 'The newest version of every app. Download it on your phone and open the file to install.', [checkButton(function () { store(); })]),
         h('div', { class: 'ph-notice ph-notice--signal' }, 'When Android asks, allow your browser to install apps from this source. Only the newest version is listed; installing over an existing app keeps its data.'),
         tiles.length ? h('div', { class: 'ph-tiles' }, tiles) : card('', '', empty('No apps to install yet', 'An app appears here once it has a published Android build.'))
       ]);

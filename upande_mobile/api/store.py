@@ -11,8 +11,10 @@
 #
 # Any signed-in user may list and download: installing an app is not an IT-only job.
 
+import math
 import os
 import re
+import time
 from urllib.parse import urlsplit
 
 import frappe
@@ -172,3 +174,53 @@ def installers(app=None):
 		],
 		"latest": rows[0]["target"] if rows else "",
 	}
+
+
+CHECK_COOLDOWN_SECONDS = 120
+
+
+def _cache():
+	# frappe.cache is a callable on v15 and the wrapper instance on v16+.
+	cache = frappe.cache
+	return cache() if callable(cache) else cache
+
+
+@frappe.whitelist(methods=["POST"])
+def check_updates():
+	"""Re-read every enabled app's newest release from GitHub now (what the hourly check does) and return the fresh
+	list. Open to any signed-in user, so it is limited to one check every two minutes for everyone: inside that
+	window it answers `{refreshed: false, retry_in}` with the list as it stands."""
+	from upande_mobile.api import devices
+
+	_signed_in()
+	key = "upande_mobile:store_check"
+	cache, last = None, None
+	try:
+		cache = _cache()
+		last = cache.get_value(key)
+	except Exception:
+		cache = None
+	elapsed = time.time() - float(last) if last is not None else None
+	if elapsed is not None and 0 <= elapsed < CHECK_COOLDOWN_SECONDS:
+		return {"refreshed": False, "retry_in": max(1, math.ceil(CHECK_COOLDOWN_SECONDS - elapsed)), **apps()}
+	if cache is not None:
+		try:
+			cache.set_value(key, time.time(), expires_in_sec=CHECK_COOLDOWN_SECONDS)
+		except Exception:
+			pass
+	for name in frappe.get_all(MOBILE_APP, filters={"enabled": 1}, pluck="name"):
+		try:
+			doc = frappe.get_doc(MOBILE_APP, name)
+			devices._refresh_app(doc)
+			doc.flags.ignore_permissions = True
+			doc.save()
+			frappe.db.commit()
+		except Exception:
+			frappe.db.rollback()
+			frappe.log_error(title=f"Mobile app store: check failed: {name}", message=frappe.get_traceback())
+	try:
+		devices.recompute_statuses()
+		frappe.db.commit()
+	except Exception:
+		frappe.db.rollback()
+	return {"refreshed": True, "retry_in": CHECK_COOLDOWN_SECONDS, **apps()}

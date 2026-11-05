@@ -176,6 +176,8 @@ The hourly job (`upande_mobile.api.devices.refresh_latest`) reads each enabled a
 
 **`https://your.site/app-store`** lists every enabled app that has a published APK, for any signed-in user (the dashboard sidebar links to it). The page never shows the GitHub repository: **Download** goes through `upande_mobile.api.store.download`, which fetches the newest APK from GitHub (only github.com and GitHub's download hosts) into the site's private files on first use, serves it from there afterwards and deletes older copies. Public repositories only: a private repo's release link cannot be fetched this way.
 
+**Check for updates.** The App store and Apps screens have a **Check for updates** button that runs the same GitHub check as the hourly job (`upande_mobile.api.store.check_updates`), for any signed-in user, at most once every two minutes for everyone; inside that window it says how long to wait.
+
 ### Reminders
 
 - **Remind** sends a push ("Version 2.1.0 is ready. Close and reopen the app to get it", or "needs a fresh install" when an APK is required). Someone reminded in the last 20 hours is skipped, and the page says who has not allowed notifications. Every reminder is logged in **Mobile Reminder** (who, when, from which version to which, who sent it) and shown on the chase list as "reminded twice".
@@ -281,7 +283,7 @@ All paths are under `/api/method/`.
 | `upande_mobile.api.support.unregister_push` (`token`) | POST | signed-in user | Forget the caller's own token |
 | `upande_mobile.api.support.chat` | GET / POST | signed-in user | The single-thread chat for sites without an Issue doctype. `GET` returns messages (and marks replies read), `?count_only=1` the unread count; `POST` sends `text` |
 | `upande_mobile.api.support.reports`, `report`, `set_report_status`, `chat_threads`, `chat_thread`, `chat_reply` | GET / POST | System Manager | Support data for Desk and integrations |
-| `upande_mobile.api.store.apps`, `download` | GET | any signed-in user | The app store |
+| `upande_mobile.api.store.apps`, `download`, `check_updates` (POST), `installers` (IT only) | GET | any signed-in user | The app store |
 | `upande_mobile.api.itdesk.*` (`today`, `updates`, `remind`, `reminders`, `device_list`, `set_device`, `problems`, `inbox`, `conversation`, `send`, `apps`) | GET / POST | System Manager or IT Support | The IT dashboard |
 | `upande_mobile.api.monitor.set_issue_status`, `purge_now` | POST | System Manager | Resolve or ignore an issue; delete expired events now |
 
