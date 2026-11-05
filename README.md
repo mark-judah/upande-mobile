@@ -181,6 +181,15 @@ A sixth screen, **User management**, lets the IT team add, edit, disable and del
 - **Guard rails:** System Manager, Script Manager, Administrator and Guest can never be given from here, and a role profile that contains one of them cannot be assigned from here either. People who already hold one of those roles, and the Administrator and Guest accounts, are read-only here (manage them in Desk). Someone who is not a System Manager cannot create or change accounts on the `upande` domain. Nobody can disable, delete or change the role profiles of their own account. Deleting is refused when records point at the person; disable them instead.
 - **Not here:** creating or editing role profiles themselves (that changes access for everyone who holds them), and system roles. Do those in Desk.
 
+### Role management, Doctype permissions and User permissions
+
+Three more screens under the same IT Team gate (and the same rule that nothing is checked only in the page: the server refuses too).
+
+- **Role management:** list the roles and the role profiles. Add a role, or add a role to a role profile (everyone on the profile gets it; Frappe updates them in the background, so it can take a moment). Removing a role from a profile and deleting roles are not offered. System Manager, Script Manager, Administrator, Guest and All are never listed, created or added.
+- **Doctype permissions:** the Role Permissions Manager. Search a doctype, see which roles can select, read, write, create, delete, submit, cancel, amend, report, export, import, share, print, email and mask it, tick or untick any of them, add a role (starting with read), remove a rule, or reset the doctype to its shipped rules. Rules for System Manager and Script Manager are shown but locked, and doctypes that hold code, users, roles or permissions (Server Script, Client Script, DocType, User, Role, Custom DocPerm, System Settings ...) cannot be edited here, because giving a role write access to them would be a way round the guard rails. Your first change copies the shipped rules into Custom DocPerm, as in Desk.
+- **User permissions:** list, add and remove user permissions (limit a person to one Company, Farm, Warehouse ...). You cannot set them for people who hold a system role or for the Administrator.
+- **Toasts:** every create, change and delete in the dashboard shows a toast. (Toasts used to be placed outside the dashboard wrapper, where the colours were not defined, so they were invisible; they now live inside it.)
+
 ### App store
 
 **`https://your.site/app-store`** lists every enabled app that has a published APK, for any signed-in user (the dashboard sidebar links to it). The page never shows the GitHub repository: **Download** goes through `upande_mobile.api.store.download`, which fetches the newest APK from GitHub (only github.com and GitHub's download hosts) into the site's private files on first use, serves it from there afterwards and deletes older copies. Public repositories only: a private repo's release link cannot be fetched this way.
@@ -294,6 +303,7 @@ All paths are under `/api/method/`.
 | `upande_mobile.api.support.reports`, `report`, `set_report_status`, `chat_threads`, `chat_thread`, `chat_reply` | GET / POST | System Manager | Support data for Desk and integrations |
 | `upande_mobile.api.store.apps`, `download`, `check_updates` (POST), `installers` (IT only) | GET | any signed-in user | The app store |
 | `upande_mobile.api.usermgmt.*` (`meta`, `users`, `detail`, `create`, `update`, `add_role_profile`, `remove_role_profile`, `reset_password`, `delete`) | GET / POST | IT Team role profile | User management |
+| `upande_mobile.api.rolemgmt.*` (`roles`, `profiles`, `create_role`, `add_role_to_profile`), `upande_mobile.api.permmgmt.*` (`doctypes`, `rules`, `set_permission`, `add_rule`, `remove_rule`, `reset_rules`, `user_permissions`, `add_user_permission`, `remove_user_permission`, ...) | GET / POST | IT Team role profile | Role, doctype and user permission management |
 | `upande_mobile.api.itdesk.*` (`today`, `updates`, `remind`, `reminders`, `device_list`, `set_device`, `problems`, `inbox`, `conversation`, `send`, `apps`) | GET / POST | IT Team role profile | The IT dashboard |
 | `upande_mobile.api.monitor.set_issue_status`, `purge_now` | POST | System Manager | Resolve or ignore an issue; delete expired events now |
 

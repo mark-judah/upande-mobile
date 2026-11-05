@@ -65,8 +65,10 @@
     });
   }
   function toast(text, kind) {
-    var box = document.querySelector('.ph-toasts');
-    if (!box) { box = h('div', { class: 'ph-toasts' }); document.body.appendChild(box); }
+    // inside the dashboard wrapper: the colour and spacing tokens are defined there, so a toast placed on <body>
+    // had no background and white text on a white page (invisible)
+    var box = (root || document.body).querySelector('.ph-toasts');
+    if (!box) { box = h('div', { class: 'ph-toasts' }); (root || document.body).appendChild(box); }
     var t = h('div', { class: 'ph-toast' + (kind ? ' ph-toast--' + kind : ''), role: 'status' }, text);
     box.appendChild(t);
     setTimeout(function () { t.classList.add('is-out'); setTimeout(function () { t.remove(); }, 250); }, 3500);
@@ -166,7 +168,7 @@
   }
 
   /* ---------- routing ---------- */
-  var TITLES = { overview: 'Overview', updates: 'Updates', devices: 'Devices', crashlytics: 'Crashlytics', support: 'Support', apps: 'Apps', users: 'User management' };
+  var TITLES = { overview: 'Overview', updates: 'Updates', devices: 'Devices', crashlytics: 'Crashlytics', support: 'Support', apps: 'Apps', users: 'User management', roles: 'Role management', permissions: 'Doctype permissions', userperms: 'User permissions' };
   function route() {
     var p = (location.hash || '#/overview').slice(2).split('?');
     return { parts: p[0].split('/').map(decodeURIComponent), q: new URLSearchParams(p[1] || '') };
@@ -200,7 +202,7 @@
     var pg = document.querySelector('.ph-page');
     if (pg) pg.classList.toggle('ph-page--wide', key === 'support');
     root.classList.remove('is-drawer-open');
-    var screens = { overview: overview, updates: updates, devices: devices, crashlytics: crashlytics, support: support, apps: apps, users: users };
+    var screens = { overview: overview, updates: updates, devices: devices, crashlytics: crashlytics, support: support, apps: apps, users: users, roles: roleScreen, permissions: permScreen, userperms: userPermScreen };
     Promise.resolve(screens[key](r)).then(markUpdated).catch(function (e) { mount(errState(e)); });
     if (key !== 'overview') refreshCounts();
   }
@@ -546,7 +548,7 @@
     var close;
     var go_ = h('button', { class: 'ph-btn ph-btn--primary', type: 'button', onclick: function () {
       go_.disabled = true;
-      call('usermgmt.create', { email: email.value, full_name: name.value, password: pw.value, role_profiles: JSON.stringify(checks.value()) }, true).then(function (res) { toast('Added ' + res.name, 'good'); close(); render(); }).catch(function (e) { go_.disabled = false; fail(e); });
+      call('usermgmt.create', { email: email.value, full_name: name.value, password: pw.value, role_profiles: JSON.stringify(checks.value()) }, true).then(function (res) { toast('Added ' + (name.value || res.name), 'good'); close(); render(); }).catch(function (e) { go_.disabled = false; fail(e); });
     } }, 'Add user');
     close = drawer('Add user', 'They sign in with this password. Ask them to change it.', h('div', { class: 'ph-stack ph-stack--lg' }, [
       field('Email', email), field('Full name', name), field('Password', pw, 'Use at least 8 characters, with letters and numbers.'),
@@ -610,6 +612,215 @@
       call('usermgmt.delete', { name: u.name }, true).then(function () { toast('Deleted ' + u.name, 'good'); close(); render(); }).catch(fail);
     } }, 'Delete user')]));
     close = drawer(u.full_name, u.name, body);
+  }
+
+  /* ---------- Role management, Doctype permissions, User permissions ---------- */
+  function guardAccess() { return USERS ? null : Promise.reject(new Error('This is for the IT Team only.')); }
+  /* a text box that suggests records as you type: fetchFn(term) -> Promise<[{value, label, sub}]> */
+  function typeahead(placeholder, fetchFn, onPick, initial) {
+    var wrap = h('div', { class: 'ph-ac' });
+    var input = h('input', { class: 'ph-control', type: 'text', placeholder: placeholder, autocomplete: 'off', value: initial || '' });
+    var menu = null, timer = null, seq = 0;
+    function close() { if (menu) { menu.remove(); menu = null; } }
+    function show(items) {
+      close();
+      menu = h('div', { class: 'ph-ac__menu' }, items.length ? items.map(function (it) {
+        return h('div', { class: 'ph-ac__item', onmousedown: function (e) { e.preventDefault(); input.value = it.label; close(); onPick(it); } }, [it.label, it.sub ? h('small', {}, it.sub) : null]);
+      }) : h('div', { class: 'ph-ac__empty' }, 'Nothing found'));
+      wrap.appendChild(menu);
+    }
+    function run() { var my = ++seq; fetchFn(input.value.trim()).then(function (items) { if (my === seq) show(items); }).catch(function () { /* the box just stays empty */ }); }
+    input.addEventListener('input', function () { clearTimeout(timer); timer = setTimeout(run, 250); });
+    input.addEventListener('focus', run);
+    input.addEventListener('blur', function () { setTimeout(close, 150); });
+    wrap.appendChild(input);
+    wrap.input = input;
+    return wrap;
+  }
+  function chips(list, max) {
+    if (!list.length) return h('span', { class: 'ph-muted' }, '—');
+    var shown = list.slice(0, max || 4).map(function (p) { return badge(p, ''); });
+    if (list.length > (max || 4)) shown.push(h('span', { class: 'ph-muted', style: 'font-size:12px' }, '+' + (list.length - (max || 4)) + ' more'));
+    return h('div', { class: 'ph-flex ph-flex--wrap' }, shown);
+  }
+  function foot(n, one, many) { return h('div', { class: 'ph-muted', id: 'um-shown', style: 'font-size:12px;margin-top:var(--sp-3)' }, n ? plural(n, one, many) : ''); }
+
+  /* ----- Role management ----- */
+  function roleScreen(r) {
+    var g = guardAccess(); if (g) return g;
+    var view_ = r.q.get('view') || 'roles', q = r.q.get('search') || '';
+    return Promise.all([call('rolemgmt.roles', { search: q }), call('rolemgmt.profiles', { search: q })]).then(function (res) {
+      var rs = res[0], ps = res[1];
+      function nav(over) { var o = { view: view_, search: q }; Object.keys(over).forEach(function (k) { o[k] = over[k]; }); go('roles?' + qs(o)); }
+      var body;
+      if (view_ === 'profiles') {
+        var rows = ps.rows.map(function (p) {
+          function open() { openProfile(p); }
+          return h('tr', { class: 'is-link', tabindex: 0, 'data-find': p.name.toLowerCase(), onclick: open, onkeydown: function (e) { if (e.key === 'Enter') open(); } }, [
+            h('td', {}, h('span', { class: 'ph-strong' }, p.name)), h('td', {}, chips(p.roles, 5)), h('td', { class: 'is-num' }, p.system_roles ? plural(p.system_roles, 'system role') : '—'), h('td', { class: 'is-num' }, String(p.people))
+          ]);
+        });
+        body = [card('', '', rows.length ? table([{ label: 'Role profile' }, { label: 'Roles' }, { label: 'System roles', num: true }, { label: 'People', num: true }], rows) : empty('No role profiles match'), true), foot(rows.length, 'role profile')];
+      } else {
+        var rows2 = rs.rows.map(function (x) {
+          function open() { openRole(x); }
+          return h('tr', { class: 'is-link', tabindex: 0, 'data-find': x.name.toLowerCase(), onclick: open, onkeydown: function (e) { if (e.key === 'Enter') open(); } }, [
+            h('td', {}, h('span', { class: 'ph-strong' }, x.name)), h('td', {}, x.desk_access ? badge('Desk', 'signal') : badge('Website only', '')), h('td', {}, chips(x.profiles, 3)), h('td', { class: 'is-num' }, String(x.people)), h('td', {}, x.disabled ? badge('Disabled', 'bad') : badge('Active', 'good'))
+          ]);
+        });
+        body = [card('', '', rows2.length ? table([{ label: 'Role' }, { label: 'Access' }, { label: 'In role profiles' }, { label: 'People', num: true }, { label: 'Status' }], rows2) : empty('No roles match'), true), foot(rows2.length, 'role')];
+      }
+      mount([
+        head('IT dashboard · Role management', 'Roles and role profiles', 'Add a role, or add a role to a role profile (everyone on the profile then gets it). System Manager and Script Manager are never listed or handed out from here.', h('button', { class: 'ph-btn ph-btn--primary', type: 'button', onclick: openNewRole }, 'New role')),
+        filters([pills([['roles', 'Roles', rs.total], ['profiles', 'Role profiles', ps.total]], view_, function (v) { nav({ view: v, search: '' }); }), liveSearch(view_ === 'profiles' ? 'Search role profiles' : 'Search roles', q, function (v) { nav({ search: v }); })])
+      ].concat(body));
+    });
+  }
+  function openNewRole() {
+    var name = input({ type: 'text', placeholder: 'e.g. Stores Clerk' });
+    var desk = h('input', { type: 'checkbox' }); desk.checked = true;
+    var close;
+    var btn = h('button', { class: 'ph-btn ph-btn--primary', type: 'button', onclick: function () {
+      btn.disabled = true;
+      call('rolemgmt.create_role', { role_name: name.value, desk_access: desk.checked ? 1 : 0 }, true).then(function (res) { toast('Created the role ' + res.name, 'good'); close(); render(); }).catch(function (e) { btn.disabled = false; fail(e); });
+    } }, 'Create role');
+    close = drawer('New role', 'A role does nothing until it is in a role profile and has permissions.', h('div', { class: 'ph-stack ph-stack--lg' }, [
+      field('Role name', name), h('label', { class: 'ph-check' }, [desk, 'Can use the desk (the back office)']), h('div', {}, btn)
+    ]));
+  }
+  function openRole(x) {
+    var close = drawer(x.name, x.desk_access ? 'Desk role' : 'Website role', h('div', { class: 'ph-muted' }, 'Loading…'));
+    call('rolemgmt.profiles').then(function (ps) {
+      close();
+      var open_ = ps.rows.filter(function (p) { return x.profiles.indexOf(p.name) < 0; });
+      var pick = select([['', 'Add to a role profile…']].concat(open_.map(function (p) { return [p.name, p.name]; })), '', function () {}, 'Role profile');
+      var c;
+      var body = h('div', { class: 'ph-stack ph-stack--lg' }, [
+        kvList([['People with it', x.people], ['Access', x.desk_access ? 'Desk' : 'Website only'], ['Status', x.disabled ? 'Disabled' : 'Active']]),
+        h('div', {}, [h('div', { class: 'ph-label', style: 'margin-bottom:var(--sp-2)' }, 'In these role profiles'), x.profiles.length ? h('div', { class: 'ph-flex ph-flex--wrap' }, x.profiles.map(function (p) { return badge(p, ''); })) : h('div', { class: 'ph-muted' }, 'None yet, so nobody has this role.')]),
+        h('div', {}, [h('div', { class: 'ph-label', style: 'margin-bottom:var(--sp-2)' }, 'Give it to a role profile'), h('div', { class: 'ph-flex', style: 'gap:var(--sp-3)' }, [pick, h('button', { class: 'ph-btn', type: 'button', onclick: function () {
+          if (!pick.value) return;
+          if (!confirm('Add ' + x.name + ' to ' + pick.value + '? Everyone on that profile will get it.')) return;
+          call('rolemgmt.add_role_to_profile', { role_profile: pick.value, role: x.name }, true).then(function (res) { toast('Added ' + x.name + ' to ' + res.role_profile + ' (' + plural(res.people, 'person', 'people') + ')', 'good'); c(); render(); }).catch(fail);
+        } }, 'Add')])])
+      ]);
+      c = drawer(x.name, x.desk_access ? 'Desk role' : 'Website role', body);
+    }).catch(function (e) { close(); fail(e); });
+  }
+  function openProfile(p) {
+    var c;
+    var pickRole = null;
+    var typer = typeahead('Search a role to add', function (term) { return call('rolemgmt.roles', { search: term }).then(function (res) { return res.rows.filter(function (x) { return p.roles.indexOf(x.name) < 0; }).slice(0, 12).map(function (x) { return { value: x.name, label: x.name, sub: x.desk_access ? 'Desk' : 'Website only' }; }); }); }, function (it) { pickRole = it.value; });
+    var body = h('div', { class: 'ph-stack ph-stack--lg' }, [
+      kvList([['People on it', p.people], ['System roles inside', p.system_roles ? plural(p.system_roles, 'system role') + ' (not shown)' : 'none']]),
+      h('div', {}, [h('div', { class: 'ph-label', style: 'margin-bottom:var(--sp-2)' }, 'Roles in this profile'), p.roles.length ? h('div', { class: 'ph-flex ph-flex--wrap' }, p.roles.map(function (x) { return badge(x, ''); })) : h('div', { class: 'ph-muted' }, 'No roles.')]),
+      h('div', {}, [h('div', { class: 'ph-label', style: 'margin-bottom:var(--sp-2)' }, 'Add a role'), typer, h('div', { style: 'margin-top:var(--sp-3)' }, h('button', { class: 'ph-btn', type: 'button', onclick: function () {
+        var role = pickRole || typer.input.value.trim();
+        if (!role) return;
+        if (!confirm('Add ' + role + ' to ' + p.name + '? Everyone on this profile (' + plural(p.people, 'person', 'people') + ') will get it.')) return;
+        call('rolemgmt.add_role_to_profile', { role_profile: p.name, role: role }, true).then(function (res) { toast('Added ' + role + ' to ' + res.role_profile + ' (' + plural(res.people, 'person', 'people') + ')', 'good'); c(); render(); }).catch(fail);
+      } }, 'Add role'))])
+    ]);
+    c = drawer(p.name, 'Role profile', body);
+  }
+
+  /* ----- Doctype permissions ----- */
+  var PERM_LABEL = { select: 'Select', read: 'Read', write: 'Write', create: 'Create', delete: 'Delete', submit: 'Submit', cancel: 'Cancel', amend: 'Amend', report: 'Report', export: 'Export', import: 'Import', share: 'Share', print: 'Print', email: 'Email', mask: 'Mask' };
+  function permScreen(r) {
+    var g = guardAccess(); if (g) return g;
+    var dt = r.q.get('doctype') || '';
+    var picker = typeahead('Search a doctype, e.g. Sales Order', function (term) { return call('permmgmt.doctypes', { search: term }).then(function (res) { return res.rows.map(function (x) { return { value: x.name, label: x.name, sub: x.module || '' }; }); }); }, function (it) { go('permissions?' + qs({ doctype: it.value })); }, dt);
+    var tools = h('div', { style: 'min-width:min(340px,100%)' }, picker);
+    if (!dt) { mount([head('IT dashboard · Doctype permissions', 'Who can do what', 'Pick a doctype to see which roles can read, write, create or delete it, and change that. Doctypes that hold code, users or permissions are managed in Desk.'), filters([tools]), card('', '', empty('Choose a doctype', 'Search above for the kind of document you want to set permissions for.'))]); return Promise.resolve(); }
+    return call('permmgmt.rules', { doctype: dt }).then(function (d) { drawRules(d, tools); });
+  }
+  function drawRules(d, tools) {
+    var dt = d.doctype;
+    function apply(res) { drawRules(res, tools); }
+    var head_ = [h('th', {}, 'Role'), h('th', { class: 'is-num' }, 'Level'), h('th', {}, 'Own only')].concat(d.types.map(function (t) { return h('th', { class: 'is-num' }, PERM_LABEL[t]); })).concat([h('th', {}, '')]);
+    var body = d.rules.map(function (x) {
+      return h('tr', {}, [
+        h('td', {}, [h('span', { class: 'ph-strong' }, x.role), x.locked ? h('span', { style: 'margin-left:8px' }, badge('System role', '')) : null]),
+        h('td', { class: 'is-num' }, String(x.permlevel)), h('td', {}, x.if_owner ? 'Yes' : '—')
+      ].concat(d.types.map(function (t) {
+        var off = x.locked || (['submit', 'cancel', 'amend'].indexOf(t) >= 0 && !d.submittable);
+        var cb = h('input', { type: 'checkbox', disabled: off, 'aria-label': PERM_LABEL[t] + ' for ' + x.role, onchange: function () {
+          cb.disabled = true;
+          call('permmgmt.set_permission', { doctype: dt, role: x.role, permlevel: x.permlevel, ptype: t, value: cb.checked ? 1 : 0, if_owner: x.if_owner }, true)
+            .then(function (res) { toast(PERM_LABEL[t] + ' ' + (cb.checked ? 'allowed' : 'removed') + ' for ' + x.role + ' on ' + dt, 'good'); apply(res); })
+            .catch(function (e) { cb.checked = !cb.checked; cb.disabled = false; fail(e); });
+        } });
+        cb.checked = !!x[t];
+        return h('td', { class: 'is-num' }, cb);
+      })).concat([h('td', {}, x.locked ? null : h('button', { class: 'ph-btn ph-btn--ghost', type: 'button', onclick: function () {
+        if (!confirm('Remove the rule for ' + x.role + ' (level ' + x.permlevel + ') on ' + dt + '?')) return;
+        call('permmgmt.remove_rule', { doctype: dt, role: x.role, permlevel: x.permlevel, if_owner: x.if_owner }, true).then(function (res) { toast('Removed the rule for ' + x.role + ' on ' + dt, 'good'); apply(res); }).catch(fail);
+      } }, 'Remove'))]));
+    });
+    var roleBox = typeahead('Role to give access', function (term) { var t = term.toLowerCase(); return Promise.resolve(d.roles.filter(function (n) { return !t || n.toLowerCase().indexOf(t) >= 0; }).slice(0, 12).map(function (n) { return { value: n, label: n }; })); }, function () {});
+    var level = input({ type: 'number', min: 0, max: 9, value: 0, style: 'width:90px' });
+    var add = h('button', { class: 'ph-btn ph-btn--primary', type: 'button', onclick: function () {
+      var role = roleBox.input.value.trim();
+      if (!role) return;
+      add.disabled = true;
+      call('permmgmt.add_rule', { doctype: dt, role: role, permlevel: level.value || 0 }, true).then(function (res) { toast(role + ' can now read ' + dt, 'good'); apply(res); }).catch(function (e) { add.disabled = false; fail(e); });
+    } }, 'Add role');
+    mount([
+      head('IT dashboard · Doctype permissions', dt, d.customised ? 'These rules have been customised. Changes apply straight away.' : 'These are the rules the doctype shipped with. Your first change makes an editable copy.', h('button', { class: 'ph-btn ph-btn--ghost', type: 'button', onclick: function () {
+        if (!confirm('Put ' + dt + ' back to the rules it shipped with? Your changes to it will be lost.')) return;
+        call('permmgmt.reset_rules', { doctype: dt }, true).then(function (res) { toast(dt + ' is back to its default permissions', 'good'); apply(res); }).catch(fail);
+      } }, 'Reset to default')),
+      filters([tools]),
+      card('', '', table(d.types.length ? head_.map(function (th) { return { label: th.textContent, num: th.className === 'is-num' }; }) : [], body), true),
+      card('Give another role access', 'Starts with Read; tick the rest above.', h('div', { class: 'ph-flex ph-flex--wrap', style: 'gap:var(--sp-3);padding:var(--sp-4);align-items:flex-end' }, [h('div', { style: 'min-width:260px;flex:1' }, roleBox), h('div', {}, [h('div', { class: 'ph-muted', style: 'font-size:12px;margin-bottom:4px' }, 'Level'), level]), add]))
+    ]);
+  }
+
+  /* ----- User permissions ----- */
+  function userPermScreen(r) {
+    var g = guardAccess(); if (g) return g;
+    var q = r.q.get('search') || '';
+    return call('permmgmt.user_permissions', { search: q }).then(function (d) {
+      var rows = d.rows.map(function (x) {
+        return h('tr', { 'data-find': (x.full_name + ' ' + x.user + ' ' + x.allow + ' ' + x.for_value).toLowerCase() }, [
+          h('td', {}, who(x.full_name, x.user)), h('td', {}, x.allow), h('td', {}, h('span', { class: 'ph-strong' }, x.for_value)),
+          h('td', {}, x.all_doctypes ? 'All doctypes' : x.applicable_for), h('td', {}, x.is_default ? badge('Default', 'signal') : '—'),
+          h('td', {}, x.locked ? badge('Managed in Desk', '') : h('button', { class: 'ph-btn ph-btn--ghost', type: 'button', onclick: function () {
+            if (!confirm('Remove the ' + x.allow + ' ' + x.for_value + ' restriction from ' + x.full_name + '?')) return;
+            call('permmgmt.remove_user_permission', { name: x.name }, true).then(function () { toast('Removed the restriction from ' + x.full_name, 'good'); render(); }).catch(fail);
+          } }, 'Remove'))
+        ]);
+      });
+      mount([
+        head('IT dashboard · User permissions', 'Limit people to records', 'A user permission limits a person to certain records, such as one company or one farm. They then only see documents that belong to it.', h('button', { class: 'ph-btn ph-btn--primary', type: 'button', onclick: openNewUserPerm }, 'New user permission')),
+        filters([liveSearch('Search person, doctype or value', q, function (v) { go('userperms?' + qs({ search: v })); })]),
+        card('', '', rows.length ? table([{ label: 'Person' }, { label: 'Restricted doctype' }, { label: 'Value' }, { label: 'Applies to' }, { label: 'Default' }, { label: '' }], rows) : empty('No user permissions', 'Nobody is limited to specific records yet.'), true),
+        foot(rows.length, 'user permission')
+      ]);
+    });
+  }
+  function openNewUserPerm() {
+    var picked = { user: '', allow: '', value: '', applicable: '' };
+    var userBox = typeahead('Search a person', function (term) { return call('usermgmt.users', { search: term }).then(function (res) { return res.rows.filter(function (x) { return !x.locked; }).slice(0, 10).map(function (x) { return { value: x.name, label: x.full_name, sub: x.name }; }); }); }, function (it) { picked.user = it.value; });
+    var allowBox = typeahead('Search a doctype, e.g. Company', function (term) { return call('permmgmt.linkable_doctypes', { search: term }).then(function (res) { return res.rows.map(function (x) { return { value: x.name, label: x.name, sub: x.module || '' }; }); }); }, function (it) { picked.allow = it.value; picked.applicable = ''; valueBox.input.value = ''; picked.value = ''; loadApplicable(); });
+    var valueBox = typeahead('Search the record', function (term) { if (!picked.allow) return Promise.resolve([]); return call('permmgmt.link_values', { doctype: picked.allow, search: term }).then(function (res) { return res.rows.map(function (n) { return { value: n, label: n }; }); }); }, function (it) { picked.value = it.value; });
+    var all = h('input', { type: 'checkbox' }); all.checked = true;
+    var dflt = h('input', { type: 'checkbox' });
+    var appl = select([['', 'Choose a doctype…']], '', function (v) { picked.applicable = v; }, 'Applies to');
+    var applField = field('Applies to', appl, 'Only documents of this doctype are limited.'); applField.hidden = true;
+    function loadApplicable() { if (all.checked || !picked.allow) return; call('permmgmt.applicable_doctypes', { allow: picked.allow }).then(function (res) { clear(appl); [['', 'Choose a doctype…']].concat(res.rows.map(function (n) { return [n, n]; })).forEach(function (o) { appl.appendChild(h('option', { value: o[0] }, o[1])); }); }).catch(fail); }
+    all.addEventListener('change', function () { applField.hidden = all.checked; loadApplicable(); });
+    var close;
+    var btn = h('button', { class: 'ph-btn ph-btn--primary', type: 'button', onclick: function () {
+      var forValue = picked.value || valueBox.input.value.trim(), user = picked.user || userBox.input.value.trim(), allow = picked.allow || allowBox.input.value.trim();
+      btn.disabled = true;
+      call('permmgmt.add_user_permission', { user: user, allow: allow, for_value: forValue, apply_to_all_doctypes: all.checked ? 1 : 0, applicable_for: all.checked ? '' : (picked.applicable || appl.value), is_default: dflt.checked ? 1 : 0 }, true)
+        .then(function () { toast('Limited ' + userBox.input.value + ' to ' + allow + ' ' + forValue, 'good'); close(); render(); }).catch(function (e) { btn.disabled = false; fail(e); });
+    } }, 'Add user permission');
+    close = drawer('New user permission', 'Limit a person to one record.', h('div', { class: 'ph-stack ph-stack--lg' }, [
+      field('Person', userBox), field('Doctype to restrict', allowBox, 'For example Company, Farm or Warehouse.'), field('Record', valueBox),
+      h('label', { class: 'ph-check' }, [all, 'Apply to all doctypes']), applField, h('label', { class: 'ph-check' }, [dflt, 'Use as their default value']), h('div', {}, btn)
+    ]));
   }
 
   var KIND_BADGE = { crash: 'bad', error: 'warn', api: 'signal', log: '' };
@@ -750,7 +961,7 @@
         var v = text.value.trim();
         if (!v) return;
         sendBtn.disabled = true;
-        call('send', { id: id, text: v }, true).then(function () { render(); }).catch(function (e) { fail(e); sendBtn.disabled = false; });
+        call('send', { id: id, text: v }, true).then(function () { toast('Message sent', 'good'); render(); }).catch(function (e) { fail(e); sendBtn.disabled = false; });
       } }, 'Send');
       var chat = h('section', { class: 'ph-card itd-chat' }, [
         h('div', { class: 'itd-pane__head' }, [
