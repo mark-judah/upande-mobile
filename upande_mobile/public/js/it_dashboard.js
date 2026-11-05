@@ -476,6 +476,22 @@
   /* ---------- Crashlytics ---------- */
   /* ---------- User management ---------- */
   var USERS = boot.getAttribute('data-users') === '1';
+  /* a search box that narrows the rows already on the page as you type (no reload, so the cursor stays put);
+     Enter asks the server, which also reaches people beyond the rows shown. */
+  function liveSearch(placeholder, value, onEnter) {
+    var i = h('input', { type: 'search', placeholder: placeholder, value: value || '', oninput: function () {
+      var term = i.value.trim().toLowerCase(), shown = 0, all = 0;
+      [].forEach.call(view.querySelectorAll('tbody tr[data-find]'), function (tr) {
+        all++;
+        var hit = !term || tr.getAttribute('data-find').indexOf(term) >= 0;
+        tr.hidden = !hit;
+        if (hit) shown++;
+      });
+      var n = document.getElementById('um-shown');
+      if (n) n.textContent = term ? shown + ' of ' + plural(all, 'person', 'people') + ' (press Enter to search everyone)' : plural(all, 'person', 'people');
+    }, onkeydown: function (e) { if (e.key === 'Enter') onEnter(i.value); } });
+    return h('label', { class: 'ph-search' }, [icon(['M11 3a8 8 0 1 0 0 16 8 8 0 0 0 0-16z', 'M21 21l-4.35-4.35']), i]);
+  }
   function profileChips(list, locked) {
     return list.length ? list.map(function (p) { return badge(p, locked ? '' : 'signal'); }) : h('span', { class: 'ph-muted' }, 'No role profile');
   }
@@ -487,7 +503,7 @@
       function nav(over) { var o = { status: status, profile: profile, search: q }; Object.keys(over).forEach(function (k) { o[k] = over[k]; }); go('users?' + qs(o)); }
       var rows = d.rows.map(function (x) {
         function open() { openUser(x.name, m); }
-        return h('tr', { class: 'is-link', tabindex: 0, onclick: open, onkeydown: function (e) { if (e.key === 'Enter') open(); } }, [
+        return h('tr', { class: 'is-link', tabindex: 0, 'data-find': (x.full_name + ' ' + x.name).toLowerCase(), onclick: open, onkeydown: function (e) { if (e.key === 'Enter') open(); } }, [
           h('td', {}, who(x.full_name, x.name)),
           h('td', {}, h('div', { class: 'ph-flex ph-flex--wrap' }, profileChips(x.profiles, !!x.locked))),
           h('td', {}, x.locked ? badge('Managed in Desk', '') : x.enabled ? badge('Active', 'good') : badge('Disabled', 'bad')),
@@ -502,9 +518,10 @@
         filters([
           pills([['', 'All', s.active + s.disabled], ['active', 'Active', s.active], ['disabled', 'Disabled', s.disabled]], status, function (v) { nav({ status: v }); }),
           select([['', 'Any role profile'], ['none', 'No role profile']].concat(m.profiles.map(function (p) { return [p.name, p.name + ' (' + p.users + ')']; })), profile, function (v) { nav({ profile: v }); }, 'Role profile'),
-          search('Search name or email', q, function (v) { nav({ search: v }); })
+          liveSearch('Search name or email', q, function (v) { nav({ search: v }); })
         ]),
-        card('', '', rows.length ? table(cols, rows) : empty('No people match'), true)
+        card('', '', rows.length ? table(cols, rows) : empty('No people match'), true),
+        h('div', { class: 'ph-muted', id: 'um-shown', style: 'font-size:12px;margin-top:var(--sp-3)' }, rows.length ? plural(rows.length, 'person', 'people') : '')
       ]);
     });
   }
