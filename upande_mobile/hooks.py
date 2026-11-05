@@ -11,8 +11,6 @@ scheduler_events = {
 		"0 * * * *": ["upande_mobile.api.devices.refresh_latest"],
 		# Delete crash / API events past each app's retention (issues are kept).
 		"30 2 * * *": ["upande_mobile.api.monitor.purge_old_events"],
-		# Remind people still behind on apps that turned auto-remind on.
-		"0 8 * * *": ["upande_mobile.api.itdesk.auto_nudge"],
 	},
 }
 

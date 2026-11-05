@@ -6,6 +6,7 @@
   var boot = document.getElementById('itd-boot');
   var DEV = boot.getAttribute('data-developer') === '1';
   var STORE = boot.getAttribute('data-page') === 'store';
+  var IT = boot.getAttribute('data-it') === '1';
   var view = document.getElementById('view');
   var main = document.getElementById('ph-main');
   var root = document.getElementById('ph2');
@@ -399,6 +400,13 @@
       h('div', { class: 'ph-flex ph-flex--wrap' }, x.flags.length ? x.flags.map(function (f) { return badge(FLAG_TEXT[f] || f, f === 'outdated_app' ? 'warn' : 'bad'); }) : [badge('Healthy', 'good')]),
       kvList([['Owner', x.owner_name], ['Email', x.owner], ['App', x.app + ' ' + x.app_version], ['System', x.platform + ' ' + x.os_version], ['Battery', x.battery != null ? x.battery + '%' : ''], ['Free storage', x.storage_free_gb != null ? x.storage_free_gb + ' GB' : ''], ['Network', x.network], ['Last seen', ago(x.last_seen)]]),
       h('div', {}, [h('div', { class: 'ph-label', style: 'margin-bottom:var(--sp-2)' }, 'Identifiers'), kvList([['Serial number', x.serial_number || 'not reported'], ['MAC address', x.mac_address || 'not reported']].concat(x.local_ip && x.ip_seen && x.local_ip !== x.ip_seen ? [['IP on its network', x.local_ip], ['IP the server sees', x.ip_seen]] : [['IP address', x.local_ip || x.ip_seen || 'not reported']]).concat([ ['Build number', x.build_number || 'not reported']]), true)]),
+      h('div', {}, [h('div', { class: 'ph-label', style: 'margin-bottom:var(--sp-2)' }, 'People who used this device'), x.users && x.users.length ? h('div', {}, x.users.map(function (u) {
+        return h('div', { style: 'padding:var(--sp-3) 0;border-bottom:1px solid var(--hairline)' }, [
+          h('div', { class: 'ph-flex ph-flex--between' }, [h('div', { class: 'ph-strong' }, u.name), h('span', { class: 'ph-muted', style: 'font-size:12px' }, u.version ? 'version ' + u.version : '')]),
+          u.name !== u.user ? h('div', { class: 'ph-muted', style: 'font-size:12px' }, u.user) : null,
+          h('div', { class: 'ph-muted', style: 'font-size:12px' }, 'First used ' + dateOnly(u.first_seen) + ' · last used ' + ago(u.last_seen) + (u.logins ? ' · ' + plural(u.logins, 'sign-in') : ''))
+        ]);
+      })) : h('div', { class: 'ph-muted' }, 'No sign-ins recorded for this device.')]),
       h('div', { class: 'ph-field' }, [h('label', {}, 'Status'), st, h('div', { class: 'ph-field__hint' }, 'Lost and retired devices stop appearing on the chase list.')]),
       h('div', { class: 'ph-field' }, [h('label', {}, 'Notes'), notes]),
       h('div', {}, h('button', { class: 'ph-btn ph-btn--primary', type: 'button', onclick: function () {
@@ -581,7 +589,6 @@
     return call('apps').then(function (d) {
       var tot = d.rows.reduce(function (a, x) { a.people += x.people; a.behind += x.behind; a.problems += x.problems; a.tickets += x.open_tickets; return a; }, { people: 0, behind: 0, problems: 0, tickets: 0 });
       var rows = d.rows.map(function (a) {
-        var nudge = h('input', { class: 'ph-table-input', type: 'number', min: 0, max: 60, value: a.nudge_after_days, 'aria-label': 'Auto-remind days for ' + a.app });
         return h('tr', {}, [
           h('td', {}, who(a.app, a.version ? 'Version ' + a.version + (a.released_days_ago != null ? ' · released ' + days(a.released_days_ago) + (a.released_days_ago ? ' ago' : '') : '') : 'No release found yet')),
           h('td', { style: 'min-width:160px' }, a.adoption == null ? '—' : h('div', { class: 'ph-flex' }, [h('div', { class: 'ph-grow' }, progress(a.adoption)), h('span', { class: 'ph-strong' }, a.adoption + '%')])),
@@ -589,14 +596,12 @@
           h('td', { class: 'is-num' }, a.behind ? badge(String(a.behind), 'warn') : '0'),
           h('td', { class: 'is-num' }, String(a.away)),
           h('td', { class: 'is-num' }, a.problems ? badge(plural(a.problems, 'issue') + ' · ' + a.people_hurt + ' users', 'bad') : '0'),
-          h('td', { class: 'is-num' }, String(a.open_tickets)),
-          h('td', { style: 'width:90px' }, nudge),
-          h('td', {}, h('button', { class: 'ph-btn ph-btn--ghost ph-btn--sm', type: 'button', onclick: function () { call('set_app_policy', { app: a.app, nudge_after_days: nudge.value }, true).then(function () { toast('Saved ' + a.app, 'good'); }).catch(fail); } }, 'Save'))
+          h('td', { class: 'is-num' }, String(a.open_tickets))
         ]);
       });
-      var cols = [{ label: 'App' }, { label: 'On current version' }, { label: 'People', num: true }, { label: 'Behind', num: true }, { label: 'Away', num: true }, { label: 'Issues', num: true }, { label: 'Open tickets', num: true }, { label: 'Auto-remind (days)' }, { label: '' }];
+      var cols = [{ label: 'App' }, { label: 'On current version' }, { label: 'People', num: true }, { label: 'Behind', num: true }, { label: 'Away', num: true }, { label: 'Issues', num: true }, { label: 'Open tickets', num: true }];
       mount([
-        head('IT dashboard · Apps', 'Your apps', 'Adoption is the share of people on the current version. Auto-remind sends a push to people still behind that many days after a release (0 turns it off).'),
+        head('IT dashboard · Apps', 'Your apps', 'Adoption is the share of people on the current version.'),
         kpis([{ label: 'Apps', value: d.rows.length }, { label: 'People', value: tot.people }, { label: 'Behind', value: tot.behind }, { label: 'Open tickets', value: tot.tickets }]),
         card('', '', rows.length ? table(cols, rows) : empty('No apps are registered yet'), true)
       ]);
@@ -604,6 +609,25 @@
   }
 
   /* ---------- App store ---------- */
+  var BUCKET_BADGE = { current: ['Up to date', 'good'], forgot: ['Forgot to update', 'warn'], cant_update: ['Needs new install', 'bad'], away: ['Not seen lately', ''], unknown: ['Unknown', ''] };
+  function openInstallers(a) {
+    var body = h('div', {}, h('div', { class: 'ph-muted' }, 'Loading…'));
+    drawer(a.app, 'Who has installed it', body);
+    call('store.installers', { app: a.app }).then(function (d) {
+      clear(body);
+      var behind = d.people.filter(function (p) { return p.bucket === 'forgot' || p.bucket === 'cant_update'; }).length;
+      body.appendChild(h('div', { class: 'ph-muted', style: 'margin-bottom:var(--sp-3)' }, plural(d.people.length, 'person', 'people') + (d.latest ? ' · current version ' + d.latest : '') + (behind ? ' · ' + behind + ' behind' : '')));
+      if (!d.people.length) { body.appendChild(empty('Nobody yet', 'Nobody has opened this app on a registered device.')); return; }
+      d.people.forEach(function (p) {
+        var b = BUCKET_BADGE[p.bucket] || BUCKET_BADGE.unknown;
+        body.appendChild(h('div', { style: 'padding:var(--sp-3) 0;border-bottom:1px solid var(--hairline)' }, [
+          h('div', { class: 'ph-flex ph-flex--between' }, [h('div', { class: 'ph-strong' }, p.name), badge(b[0], b[1])]),
+          h('div', { class: 'ph-muted', style: 'font-size:12px' }, (p.name !== p.user ? p.user + ' · ' : '') + (p.team ? p.team + ' · ' : '') + (p.version ? 'version ' + p.version : 'version unknown')),
+          h('div', { class: 'ph-muted', style: 'font-size:12px' }, (p.device ? p.device + ' · ' : '') + 'last opened ' + ago(p.last_seen))
+        ]));
+      });
+    }).catch(function (e) { clear(body); body.appendChild(errState(e)); });
+  }
   function store() {
     return call('store.apps').then(function (d) {
       var tiles = d.apps.map(function (a) {
@@ -614,7 +638,10 @@
             h('div', {}, [h('small', {}, 'Released'), h('b', {}, dateOnly(a.released))]),
             h('div', {}, [h('small', {}, 'Size'), h('b', {}, a.size_mb ? a.size_mb + ' MB' : '—')])
           ]),
-          h('a', { class: 'ph-btn ph-btn--primary ph-btn--block', href: BASE + 'store.download?' + qs({ app: a.app }), download: a.file }, 'Download APK')
+          h('div', { class: 'ph-stack' }, [
+            h('a', { class: 'ph-btn ph-btn--primary ph-btn--block', href: BASE + 'store.download?' + qs({ app: a.app }), download: a.file }, 'Download APK'),
+            IT ? h('button', { class: 'ph-btn ph-btn--ghost ph-btn--block', type: 'button', onclick: function () { openInstallers(a); } }, 'Who installed it') : null
+          ])
         ]);
       });
       mount([

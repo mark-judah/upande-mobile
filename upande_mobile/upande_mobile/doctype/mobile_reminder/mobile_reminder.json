@@ -39,7 +39,7 @@
   {
    "fieldname": "kind",
    "fieldtype": "Select",
-   "options": "update\nmanual\nauto",
+   "options": "update\nmanual",
    "read_only": 1,
    "default": "update",
    "label": "Kind"

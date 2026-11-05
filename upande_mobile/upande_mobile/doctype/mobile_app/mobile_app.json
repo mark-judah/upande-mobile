@@ -30,10 +30,7 @@
   "enable_monitoring",
   "accept_reports_before_sign_in",
   "column_break_monitoring",
-  "event_retention_days",
-  "reminders_section",
-  "column_break_rem",
-  "nudge_after_days"
+  "event_retention_days"
  ],
  "fields": [
   {
@@ -190,22 +187,6 @@
    "fieldtype": "Int",
    "label": "Event Retention (Days)",
    "non_negative": 1
-  },
-  {
-   "fieldname": "reminders_section",
-   "fieldtype": "Section Break",
-   "label": "Update reminders"
-  },
-  {
-   "fieldname": "column_break_rem",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "nudge_after_days",
-   "fieldtype": "Int",
-   "default": "0",
-   "description": "0 turns automatic reminders off. Otherwise people still behind this many days after a release get a push, at most 3 times, 3 days apart.",
-   "label": "Auto-remind After (days)"
   }
  ],
  "index_web_pages_for_search": 0,

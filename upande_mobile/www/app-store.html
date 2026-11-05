@@ -2,7 +2,7 @@
 {% block title %}App store{% endblock %}
 {% block page_content %}
 {% include "upande_mobile/templates/includes/shell_start.html" %}
-<div id="itd-boot" hidden data-csrf="{{ csrf_token }}" data-developer="{{ developer }}" data-page="store"></div>
+<div id="itd-boot" hidden data-csrf="{{ csrf_token }}" data-developer="{{ developer }}" data-it="{{ itd_is_it }}" data-page="store"></div>
 <div id="view" aria-live="polite"><p class="ph-muted">Loading&hellip;</p></div>
 {% include "upande_mobile/templates/includes/shell_end.html" %}
 <script src="/assets/upande_mobile/js/it_dashboard.js?v={{ itd_v }}"></script>

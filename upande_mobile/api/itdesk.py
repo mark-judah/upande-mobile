@@ -26,8 +26,6 @@ REMINDER = "Mobile Reminder"
 INSTALL = "Mobile App Install"
 MOBILE_APP = "Mobile App"
 REMIND_COOLDOWN_HOURS = 20
-AUTO_MAX = 3
-AUTO_GAP_DAYS = 3
 MAX_ROWS = 500
 MAX_REMIND = 200
 DEVICE_STATES = ("Active", "Lost", "Retired")
@@ -149,7 +147,7 @@ def _app_rows():
 		for r in frappe.get_all(
 			MOBILE_APP,
 			filters={"enabled": 1},
-			fields=["name", "latest_version", "latest_runtime", "latest_apk_version", "published_at", "dormant_days", "nudge_after_days"],
+			fields=["name", "latest_version", "latest_runtime", "latest_apk_version", "published_at", "dormant_days"],
 		)
 	}
 
@@ -324,24 +322,6 @@ def reminders(user=None, app=None, limit=100):
 	return {"rows": rows}
 
 
-def auto_nudge():
-	"""Daily: remind people still behind `nudge_after_days` after a release, up to AUTO_MAX times, AUTO_GAP_DAYS apart."""
-	apps = _app_rows()
-	now_dt = now_datetime()
-	sent = 0
-	for p in people():
-		app_row = apps.get(p["app"])
-		if not app_row or not cint(app_row.nudge_after_days) or p["bucket"] not in ("forgot", "cant_update"):
-			continue
-		if (p["released_days_ago"] or 0) < cint(app_row.nudge_after_days) or p["reminded"] >= AUTO_MAX:
-			continue
-		if p["last_reminded"] and not reminder_allowed(p["last_reminded"], now_dt, AUTO_GAP_DAYS * 24):
-			continue
-		_send_reminder(p, None, "auto", now_dt)
-		sent += 1
-	return sent
-
-
 # --------------------------------------------------------------------------- #
 # today and apps
 # --------------------------------------------------------------------------- #
@@ -449,24 +429,9 @@ def apps():
 				"problems": sum(1 for p in problems if p["app"] == name),
 				"people_hurt": sum(p["people"] for p in problems if p["app"] == name),
 				"open_tickets": sum(1 for c in convo if c["app"] == name and c["status"] not in ("Resolved", "Closed")),
-				"nudge_after_days": cint(a.nudge_after_days),
 			}
 		)
 	return {"rows": out}
-
-
-@frappe.whitelist(methods=["POST"])
-def set_app_policy(app, nudge_after_days=None):
-	"""Per-app reminder setting: auto-remind after 0 (off) or 1..60 days."""
-	_require_it()
-	if not frappe.db.exists(MOBILE_APP, app):
-		frappe.throw(_("Unknown app."), frappe.DoesNotExistError)
-	values = {}
-	if nudge_after_days is not None:
-		values["nudge_after_days"] = max(0, min(cint(nudge_after_days), 60))
-	if values:
-		frappe.db.set_value(MOBILE_APP, app, values)
-	return values
 
 
 # --------------------------------------------------------------------------- #
@@ -527,6 +492,10 @@ def device_list(app=None, state=None, health=None, search=None):
 			"local_ip": r.local_ip or "",
 			"build_number": r.build_number or "",
 			"ip_seen": r.ip_address or "",
+			"users": [
+				{"user": u.get("user"), "name": u.get("full_name") or u.get("user"), "first_seen": str(u.get("first_seen") or ""), "last_seen": str(u.get("last_seen") or ""), "version": u.get("app_version") or "", "logins": cint(u.get("logins"))}
+				for u in (r.users or [])
+			],
 		}
 		if developer:
 			item["developer"] = {"install_id": r.install_id, "runtime": r.runtime_version, "first_seen": str(r.first_seen or ""), "launches": r.launches}

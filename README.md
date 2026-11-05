@@ -170,7 +170,7 @@ The hourly job (`upande_mobile.api.devices.refresh_latest`) reads each enabled a
 | Devices | Inventory with serial number, MAC address, device IP, the IP the server saw and build number as columns, plus owner, model, app, health, battery, storage and last seen. Open a row to mark the device Active, Lost or Retired and add a note. Lost and retired devices drop off the chase list |
 | Crashlytics | The issues the apps reported (crashes, errors, API failures, logs), most users affected first: title, file, kind, events, users, devices, versions, last seen, status. Filter by status, kind, app and search; open an issue to see who hit it and mark it resolved or ignored. Stack traces and event ids sit in a folded Developer details panel (System Managers) |
 | Support | The inbox (full name first, then email), longest wait on top, with **chat**; the screenshot a person sent shows inside their first message, like a chat app: read the conversation and answer in the page. The answer is stored on the conversation (a Comment on the Issue, so Desk still shows it) and pushed to the person's phone, so nobody has to open the Issue to reply. Change the status from the same page |
-| Apps | One row per app: share of people on the current version, behind, away, problems, open tickets, and the app's **auto-remind** setting |
+| Apps | One row per app: share of people on the current version, behind, away, problems, open tickets |
 
 ### App store
 
@@ -179,8 +179,7 @@ The hourly job (`upande_mobile.api.devices.refresh_latest`) reads each enabled a
 ### Reminders
 
 - **Remind** sends a push ("Version 2.1.0 is ready. Close and reopen the app to get it", or "needs a fresh install" when an APK is required). Someone reminded in the last 20 hours is skipped, and the page says who has not allowed notifications. Every reminder is logged in **Mobile Reminder** (who, when, from which version to which, who sent it) and shown on the chase list as "reminded twice".
-- **Auto-remind** (Mobile App, default 0 = off): a daily job at 08:00 reminds people still behind that many days after a release, at most 3 times and 3 days apart.
-- A device marked Lost or Retired is never chased.
+- A device marked Lost or Retired is never chased. Reminders are only sent when someone presses Remind; nothing is sent automatically.
 
 ## Monitoring
 
@@ -283,7 +282,7 @@ All paths are under `/api/method/`.
 | `upande_mobile.api.support.chat` | GET / POST | signed-in user | The single-thread chat for sites without an Issue doctype. `GET` returns messages (and marks replies read), `?count_only=1` the unread count; `POST` sends `text` |
 | `upande_mobile.api.support.reports`, `report`, `set_report_status`, `chat_threads`, `chat_thread`, `chat_reply` | GET / POST | System Manager | Support data for Desk and integrations |
 | `upande_mobile.api.store.apps`, `download` | GET | any signed-in user | The app store |
-| `upande_mobile.api.itdesk.*` (`today`, `updates`, `remind`, `reminders`, `device_list`, `set_device`, `problems`, `inbox`, `conversation`, `send`, `apps`, `set_app_policy`) | GET / POST | System Manager or IT Support | The IT dashboard |
+| `upande_mobile.api.itdesk.*` (`today`, `updates`, `remind`, `reminders`, `device_list`, `set_device`, `problems`, `inbox`, `conversation`, `send`, `apps`) | GET / POST | System Manager or IT Support | The IT dashboard |
 | `upande_mobile.api.monitor.set_issue_status`, `purge_now` | POST | System Manager | Resolve or ignore an issue; delete expired events now |
 
 ## Site settings
