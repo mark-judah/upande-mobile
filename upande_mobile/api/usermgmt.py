@@ -5,11 +5,12 @@
 # WITHOUT the person being a System Manager.
 #
 # Why this exists: managing users and roles in Desk needs System Manager, and System Manager also opens Server
-# Scripts, Client Scripts and the rest of the code. So the IT team gets the narrow role "IT User Admin" instead,
+# Scripts, Client Scripts and the rest of the code. So the IT team gets this screen instead, by holding the
+# "IT Team" role profile (nothing new to create or assign),
 # and every change goes through this module, which checks the caller itself and then saves with
 # `ignore_permissions`. The guard rails below are what make that safe:
 #
-#   * Access is System Manager or "IT User Admin", nothing else.
+#   * Access is System Manager or the "IT Team" role profile, nothing else.
 #   * Roles that open code or run the system (System Manager, Script Manager, Administrator ...) can never be
 #     granted from here, and a role profile that contains one cannot be assigned from here either (a profile is
 #     only a bundle of roles, so assigning it would grant them).
@@ -26,8 +27,7 @@ import frappe
 from frappe import _
 from frappe.utils import cint
 
-USER_ADMIN_ROLE = "IT User Admin"
-USER_ADMIN_PROFILE = "IT User Admin"
+TEAM_PROFILE = "IT Team"
 FORBIDDEN_ROLES = ("System Manager", "Script Manager", "Administrator", "Guest", "All")
 PROTECTED_USERS = ("Administrator", "Guest")
 DEVELOPER_DOMAIN = "upande"
@@ -52,9 +52,13 @@ def lock_reason(user, holds_forbidden, caller_is_sm, caller=None):
 
 
 def profile_is_assignable(roles):
-	"""A role profile can be handed out from here only when none of its roles is a code or system role, or the
-	user-admin role itself (only a System Manager hands out the right to manage users)."""
-	return not any(r in FORBIDDEN_ROLES or r == USER_ADMIN_ROLE for r in roles or [])
+	"""A role profile can be handed out from here only when none of its roles is a code or system role."""
+	return not any(r in FORBIDDEN_ROLES for r in roles or [])
+
+
+def is_assignable(name, roles):
+	"""The IT Team profile itself is never handed out from here: only a System Manager decides who manages users."""
+	return name != TEAM_PROFILE and profile_is_assignable(roles)
 
 
 def clean_names(values):
@@ -74,9 +78,17 @@ def split_name(full_name):
 # --------------------------------------------------------------------------- #
 
 
+def is_it_team(user=None):
+	"""Whether the person has the IT Team role profile. Access follows the profile, so there is no role to create or
+	hand out: add someone to IT Team in Desk and they can manage users."""
+	user = user or frappe.session.user
+	return bool(frappe.db.exists("User Role Profile", {"parenttype": "User", "parent": user, "role_profile": TEAM_PROFILE}))
+
+
 def can_manage(roles=None):
-	roles = roles if roles is not None else frappe.get_roles()
-	return "System Manager" in roles or USER_ADMIN_ROLE in roles
+	if roles is not None:
+		return "System Manager" in roles
+	return "System Manager" in frappe.get_roles() or is_it_team()
 
 
 def _is_sm():
@@ -85,19 +97,7 @@ def _is_sm():
 
 def _require_admin():
 	if not can_manage():
-		frappe.throw(_("User management is for IT User Admins and System Managers only."), frappe.PermissionError)
-
-
-def ensure_role():
-	"""Create the IT User Admin role and the role profile that carries it (idempotent, run after migrate). Give the
-	IT team the PROFILE; the role is what the checks look for."""
-	if not frappe.db.exists("Role", USER_ADMIN_ROLE):
-		frappe.get_doc({"doctype": "Role", "role_name": USER_ADMIN_ROLE, "desk_access": 1}).insert(ignore_permissions=True)
-	if not frappe.db.exists("Role Profile", USER_ADMIN_PROFILE):
-		doc = frappe.new_doc("Role Profile")
-		doc.role_profile = USER_ADMIN_PROFILE
-		doc.append("roles", {"role": USER_ADMIN_ROLE})
-		doc.insert(ignore_permissions=True)
+		frappe.throw(_("User management is for the IT Team and System Managers only."), frappe.PermissionError)
 
 
 # --------------------------------------------------------------------------- #
@@ -153,7 +153,7 @@ def meta():
 	for r in frappe.get_all("User Role Profile", filters={"parenttype": "User"}, fields=["role_profile"], limit_page_length=0):
 		counts[r.role_profile] = counts.get(r.role_profile, 0) + 1
 	profiles = [
-		{"name": p, "roles": sorted(roles.get(p, [])), "users": counts.get(p, 0), "assignable": profile_is_assignable(roles.get(p, []))}
+		{"name": p, "roles": sorted(roles.get(p, [])), "users": counts.get(p, 0), "assignable": is_assignable(p, roles.get(p, []))}
 		for p in frappe.get_all("Role Profile", pluck="name", order_by="name asc", limit_page_length=0)
 	]
 	return {"profiles": profiles, "me": frappe.session.user, "is_system_manager": _is_sm()}
@@ -250,7 +250,9 @@ def _check_profiles(names, keep=()):
 	for p in names:
 		if not frappe.db.exists("Role Profile", p):
 			frappe.throw(_("Unknown role profile: {0}").format(p), frappe.ValidationError)
-		if p not in keep and not profile_is_assignable(roles.get(p, [])):
+		if p not in keep and not is_assignable(p, roles.get(p, [])):
+			if p == TEAM_PROFILE:
+				frappe.throw(_("{0} decides who can manage users, so only a System Manager can give it (in Desk).").format(p), frappe.PermissionError)
 			frappe.throw(_("{0} includes a system role, so it cannot be given from here.").format(p), frappe.PermissionError)
 	return names
 

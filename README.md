@@ -159,7 +159,7 @@ The hourly job (`upande_mobile.api.devices.refresh_latest`) reads each enabled a
 
 **`https://your.site/mobile-monitor`** is an IT dashboard for the person who looks after the apps: who is out of date, which devices need a hand, what is crashing and who is waiting for an answer. It is written in plain language; the developer view is folded away.
 
-- **Who can open it:** System Managers, the **IT Support** role and the **IT User Admin** role (all created on `bench migrate`; give them to your IT staff). Developer details (stack traces, install ids, runtime, event ids, diagnostics) are shown to System Managers only. Signed-out visitors are sent to the login page and back. There is no Desk menu entry, so bookmark the address.
+- **Who can open it:** System Managers, the **IT Support** role (created on `bench migrate`) and anyone on the **IT Team** role profile. Developer details (stack traces, install ids, runtime, event ids, diagnostics) are shown to System Managers only. Signed-out visitors are sent to the login page and back. There is no Desk menu entry, so bookmark the address.
 - **Before it works:** the page loads its CSS and JavaScript from `/assets/upande_mobile/` (run `bench build --app upande_mobile` once after installing), and an app must be registered.
 - **The app selector** at the top filters every screen to one app. Everything from a device is shown as plain text, never as HTML.
 
@@ -174,7 +174,7 @@ The hourly job (`upande_mobile.api.devices.refresh_latest`) reads each enabled a
 
 ### User management
 
-A sixth screen, **User management**, lets the IT team add, edit, disable and delete people and give them role profiles without being System Managers (a System Manager can also see the Server Scripts, Client Scripts and the rest of the code, which is why that role should not go to IT). It is shown only to people with the **IT User Admin** role and to System Managers. `bench migrate` creates the role and a role profile of the same name that carries it, so give the IT team the **IT User Admin role profile** (in Desk, on the person's User record). That profile cannot be handed out from this screen, so only a System Manager decides who can manage users, and every change is checked on the server, not just hidden in the page.
+A sixth screen, **User management**, lets the IT team add, edit, disable and delete people and give them role profiles without being System Managers (a System Manager can also see the Server Scripts, Client Scripts and the rest of the code, which is why that role should not go to IT). It is shown only to people who hold the **IT Team** role profile and to System Managers. There is nothing to create or migrate: add a person to the IT Team profile in Desk and the screen appears for them. That profile cannot be handed out from this screen, so only a System Manager decides who can manage users, and every change is checked on the server, not just hidden in the page.
 
 - **What you can do:** add a person with a password and role profiles; rename them; turn the account on or off; add or remove one role profile at a time; reset the password; delete. Every change is written to the person's record as an "IT:" note, shown under "What IT changed".
 - **Roles come from role profiles.** In v16 a person's roles are rebuilt from their role profiles on every save, so this screen never sets individual roles. Removing a person's last profile removes all their roles.
@@ -293,7 +293,7 @@ All paths are under `/api/method/`.
 | `upande_mobile.api.support.chat` | GET / POST | signed-in user | The single-thread chat for sites without an Issue doctype. `GET` returns messages (and marks replies read), `?count_only=1` the unread count; `POST` sends `text` |
 | `upande_mobile.api.support.reports`, `report`, `set_report_status`, `chat_threads`, `chat_thread`, `chat_reply` | GET / POST | System Manager | Support data for Desk and integrations |
 | `upande_mobile.api.store.apps`, `download`, `check_updates` (POST), `installers` (IT only) | GET | any signed-in user | The app store |
-| `upande_mobile.api.usermgmt.*` (`meta`, `users`, `detail`, `create`, `update`, `add_role_profile`, `remove_role_profile`, `reset_password`, `delete`) | GET / POST | System Manager or IT User Admin | User management |
+| `upande_mobile.api.usermgmt.*` (`meta`, `users`, `detail`, `create`, `update`, `add_role_profile`, `remove_role_profile`, `reset_password`, `delete`) | GET / POST | System Manager or the IT Team role profile | User management |
 | `upande_mobile.api.itdesk.*` (`today`, `updates`, `remind`, `reminders`, `device_list`, `set_device`, `problems`, `inbox`, `conversation`, `send`, `apps`) | GET / POST | System Manager or IT Support | The IT dashboard |
 | `upande_mobile.api.monitor.set_issue_status`, `purge_now` | POST | System Manager | Resolve or ignore an issue; delete expired events now |
 

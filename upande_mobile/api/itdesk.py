@@ -20,6 +20,7 @@ from frappe.utils import add_days, cint, get_datetime, now_datetime
 from upande_mobile import push
 from upande_mobile.api import devices as dev
 from upande_mobile.api import monitor as mon
+from upande_mobile.api import usermgmt
 from upande_mobile.api import support as sup
 
 IT_ROLE = "IT Support"
@@ -40,8 +41,11 @@ BEHIND = ("behind_ota", "needs_apk")
 
 
 def can_use(roles=None):
+	roles_given = roles
 	roles = roles if roles is not None else frappe.get_roles()
-	return "System Manager" in roles or IT_ROLE in roles or "IT User Admin" in roles
+	if "System Manager" in roles or IT_ROLE in roles:
+		return True
+	return roles_given is None and usermgmt.is_it_team()
 
 
 def is_developer(roles=None):
@@ -58,10 +62,6 @@ def ensure_role():
 	"""Create the IT Support role (idempotent, run after migrate)."""
 	if not frappe.db.exists("Role", IT_ROLE):
 		frappe.get_doc({"doctype": "Role", "role_name": IT_ROLE, "desk_access": 1}).insert(ignore_permissions=True)
-	from upande_mobile.api import usermgmt
-
-	usermgmt.ensure_role()
-
 
 # --------------------------------------------------------------------------- #
 # pure helpers

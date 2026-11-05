@@ -480,7 +480,7 @@
     return list.length ? list.map(function (p) { return badge(p, locked ? '' : 'signal'); }) : h('span', { class: 'ph-muted' }, 'No role profile');
   }
   function users(r) {
-    if (!USERS) return Promise.reject(new Error('User management is for IT User Admins and System Managers only.'));
+    if (!USERS) return Promise.reject(new Error('User management is for the IT Team and System Managers only.'));
     var status = r.q.get('status') || '', profile = r.q.get('profile') || '', q = r.q.get('search') || '';
     return Promise.all([call('usermgmt.meta'), call('usermgmt.users', { status: status, profile: profile, search: q })]).then(function (res) {
       var m = res[0], d = res[1], s = d.summary;
@@ -516,7 +516,7 @@
       var cb = h('input', { type: 'checkbox', value: p.name, disabled: !p.assignable });
       cb.checked = picked.indexOf(p.name) >= 0;
       boxes.push(cb);
-      return h('label', { class: 'ph-flex', style: 'gap:var(--sp-3);align-items:flex-start;' + (p.assignable ? '' : 'opacity:.55') }, [cb, h('span', {}, [h('span', { class: 'ph-strong' }, p.name), h('span', { class: 'ph-muted', style: 'font-size:12px;display:block' }, p.assignable ? (p.roles.join(', ') || 'No roles') : 'Includes a system role, so it cannot be given from here.')])]);
+      return h('label', { class: 'ph-flex', style: 'gap:var(--sp-3);align-items:flex-start;' + (p.assignable ? '' : 'opacity:.55') }, [cb, h('span', {}, [h('span', { class: 'ph-strong' }, p.name), h('span', { class: 'ph-muted', style: 'font-size:12px;display:block' }, p.assignable ? (p.roles.join(', ') || 'No roles') : (p.name === 'IT Team' ? 'Decides who can manage users. Only a System Manager can give it, in Desk.' : 'Includes a system role, so it cannot be given from here.'))])]);
     }));
     wrap.value = function () { return boxes.filter(function (b) { return b.checked; }).map(function (b) { return b.value; }); };
     return wrap;
