@@ -18,6 +18,8 @@
   "latest_runtime",
   "latest_apk_version",
   "latest_apk_url",
+  "latest_apk_published_at",
+  "latest_apk_size",
   "column_break_latest",
   "published_at",
   "checked_at",
@@ -187,6 +189,18 @@
    "fieldtype": "Int",
    "label": "Event Retention (Days)",
    "non_negative": 1
+  },
+  {
+   "fieldname": "latest_apk_published_at",
+   "fieldtype": "Datetime",
+   "label": "Latest APK Published At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "latest_apk_size",
+   "fieldtype": "Int",
+   "label": "Latest APK Size (bytes)",
+   "read_only": 1
   }
  ],
  "index_web_pages_for_search": 0,

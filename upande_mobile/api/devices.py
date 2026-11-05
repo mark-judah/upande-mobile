@@ -1018,9 +1018,15 @@ def latest_ota(source, start_runtime):
 
 def latest_apk(source):
 	"""(version, download_url) of the newest non-legacy GitHub Release with an .apk, or (None, None)."""
+	found = latest_apk_asset(source)
+	return (found["version"], found["url"]) if found else (None, None)
+
+
+def latest_apk_asset(source):
+	"""The newest non-legacy GitHub Release with an .apk as {version, url, published_at, size}, or None."""
 	repo = _text(source.get("github_repo"))
 	if not repo:
-		return None, None
+		return None
 	try:
 		repo = validate_github_repo(repo)
 	except InvalidSource:
@@ -1047,10 +1053,16 @@ def latest_apk(source):
 		# Prefer the asset named for its version (myapp_v1.1.0.apk) over an alias.
 		apks.sort(key=lambda a: tag.lstrip("vV") not in _text(a.get("name")))
 		if best is None or version > best[0]:
-			best = (version, tag.lstrip("vV"), _text(apks[0].get("browser_download_url")))
+			best = (
+				version,
+				tag.lstrip("vV"),
+				_text(apks[0].get("browser_download_url")),
+				_text(release.get("published_at")),
+				cint(apks[0].get("size")),
+			)
 	if not best:
-		return None, None
-	return best[1], best[2]
+		return None
+	return {"version": best[1], "url": best[2], "published_at": best[3], "size": best[4]}
 
 
 def _iso_to_system(value):
@@ -1143,9 +1155,11 @@ def _refresh_app(doc):
 		doc.latest_runtime = None
 		doc.published_at = None
 	try:
-		apk_version, apk_url = latest_apk(source)
-		doc.latest_apk_version = apk_version
-		doc.latest_apk_url = apk_url
+		apk = latest_apk_asset(source)
+		doc.latest_apk_version = apk["version"] if apk else None
+		doc.latest_apk_url = apk["url"] if apk else None
+		doc.latest_apk_published_at = _iso_to_system(apk["published_at"]) if apk and apk["published_at"] else None
+		doc.latest_apk_size = apk["size"] if apk else 0
 	except Exception as exc:
 		# The APK only names what to install; keep the last one seen rather than
 		# losing it to a GitHub rate limit.

@@ -18,6 +18,7 @@ from urllib.parse import urlsplit
 import frappe
 import requests
 from frappe import _
+from frappe.utils import cint
 
 MOBILE_APP = "Mobile App"
 FOLDER = "mobile_apks"
@@ -54,7 +55,7 @@ def _rows():
 	return frappe.get_all(
 		MOBILE_APP,
 		filters={"enabled": 1, "latest_apk_url": ["is", "set"], "latest_apk_version": ["is", "set"]},
-		fields=["name", "latest_apk_version", "latest_apk_url", "published_at", "platform"],
+		fields=["name", "latest_apk_version", "latest_apk_url", "latest_apk_published_at", "latest_apk_size", "platform"],
 		order_by="name asc",
 		limit_page_length=0,
 	)
@@ -76,13 +77,14 @@ def apps():
 		if not allowed_download_url(r.latest_apk_url):
 			continue
 		path = os.path.join(folder, apk_filename(r.name, r.latest_apk_version))
+		size = os.path.getsize(path) if os.path.exists(path) else cint(r.latest_apk_size)
 		out.append(
 			{
 				"app": r.name,
 				"version": r.latest_apk_version,
-				"released": str(r.published_at or ""),
+				"released": str(r.latest_apk_published_at or ""),
 				"platform": r.platform or "android",
-				"size_mb": round(os.path.getsize(path) / 1024 / 1024, 1) if os.path.exists(path) else None,
+				"size_mb": round(size / 1024 / 1024, 1) if size else None,
 				"file": apk_filename(r.name, r.latest_apk_version),
 			}
 		)
