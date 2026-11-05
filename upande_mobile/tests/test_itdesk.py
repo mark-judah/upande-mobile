@@ -77,5 +77,21 @@ class TestRoles(unittest.TestCase):
 		self.assertFalse(it.is_developer(["IT Support"]))
 
 
+
+class TestOverviewHelpers(unittest.TestCase):
+	def test_android_versions(self):
+		rows = [
+			{"platform": "android", "os_major": 14}, {"platform": "Android", "os_version": "Android 14"},
+			{"platform": "android", "os_major": 9}, {"platform": "ios", "os_major": 17}, {"platform": "android"},
+		]
+		out = it.android_versions(rows, 10)
+		self.assertEqual([(r["label"], r["count"], r["old"]) for r in out], [("Android 14", 2, False), ("Android 9", 1, True)])
+
+	def test_app_mix(self):
+		out = it._app_mix([{"app": "A", "bucket": "current"}, {"app": "A", "bucket": "forgot"}, {"app": "A", "bucket": "cant_update"}, {"app": "B", "bucket": "away"}, {"app": "B", "bucket": "unknown"}])
+		self.assertEqual(out["A"], {"current": 1, "behind": 2, "away": 0, "unknown": 0})
+		self.assertEqual(out["B"], {"current": 0, "behind": 0, "away": 1, "unknown": 1})
+
+
 if __name__ == "__main__":
 	unittest.main()

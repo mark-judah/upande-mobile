@@ -328,25 +328,29 @@ def reminders(user=None, app=None, limit=100):
 
 
 @frappe.whitelist(methods=["GET"])
-def today():
-	"""What needs attention now, as cards. Each card: key, count, detail, route, severity (high/medium/low)."""
+def today(app=None):
+	"""The Overview: what needs attention now as cards (key, count, detail, route, severity) and the numbers and chart
+	data behind it. `app` limits everything to one app."""
 	_require_it()
-	everyone = people()
+	app = mon._text(app) or None
+	everyone = people(app)
 	forgot = [p for p in everyone if p["bucket"] == "forgot"]
 	cant = [p for p in everyone if p["bucket"] == "cant_update"]
 	cards = []
 	if forgot or cant:
 		oldest = max([p["released_days_ago"] or 0 for p in forgot + cant] or [0])
 		cards.append({"key": "updates", "count": len(forgot) + len(cant), "route": "updates", "severity": "high" if oldest >= 7 else "medium", "detail": {"forgot": len(forgot), "cant_update": len(cant), "oldest_days": oldest}})
-	convo = [c for c in _inbox_rows(None, None) if c["waiting"]]
+	all_convo = _inbox_rows(app, None)
+	convo = [c for c in all_convo if c["waiting"]]
 	if convo:
 		oldest = max(convo, key=lambda c: c["waiting_hours"])
 		cards.append({"key": "support", "count": len(convo), "route": "support", "severity": "high" if oldest["waiting_hours"] >= 24 else "medium", "detail": {"oldest_hours": oldest["waiting_hours"], "oldest_user": oldest["person"]}})
-	problems = [p for p in _problem_rows(None, "Open") if p["people"] > 0 and days_between(p["last_seen"], now_datetime()) is not None and days_between(p["last_seen"], now_datetime()) <= 2]
+	open_problems = _problem_rows(app, "Open")
+	problems = [p for p in open_problems if p["people"] > 0 and days_between(p["last_seen"], now_datetime()) is not None and days_between(p["last_seen"], now_datetime()) <= 2]
 	if problems:
 		hurt = sum(p["people"] for p in problems)
 		cards.append({"key": "crashlytics", "count": len(problems), "route": "crashlytics", "severity": "high" if any(p["kind"] == "crash" for p in problems) else "medium", "detail": {"people": hurt, "crashes": sum(1 for p in problems if p["kind"] == "crash")}})
-	health = mon._health_counts(None)
+	health = mon._health_counts(app)
 	device_issues = {k: health.get(k, 0) for k in ("low_battery", "low_storage", "offline", "outdated_os")}
 	if any(device_issues.values()):
 		cards.append({"key": "devices", "count": sum(device_issues.values()), "route": "devices", "severity": "low", "detail": device_issues})
@@ -357,18 +361,18 @@ def today():
 		"cards": cards,
 		"people": len(everyone),
 		"devices": health.get("devices", 0),
-		"stats": _overview_stats(everyone, _inbox_rows(None, None), _problem_rows(None, "Open")),
+		"stats": _overview_stats(everyone, all_convo, open_problems, health, app),
 		"developer": is_developer(),
 		"server_time": str(now_datetime()),
 	}
 
 
-def _overview_stats(everyone, convo, open_problems):
+def _overview_stats(everyone, convo, open_problems, health, app=None):
 	"""Headline numbers for the Overview: apps, people, adoption, devices, support and problems."""
 	now_dt = now_datetime()
 	week = add_days(now_dt, -7)
 	app_rows = _app_rows()
-	devices = frappe.get_all(INSTALL, fields=["platform", "device_state", "first_seen", "last_seen"], limit_page_length=0)
+	devices = frappe.get_all(INSTALL, filters={"app": app} if app else {}, fields=["platform", "os_version", "os_major", "device_state", "first_seen", "last_seen"], limit_page_length=0)
 	active = [d for d in devices if (d.device_state or "Active") == "Active"]
 	platforms = {}
 	for d in active:
@@ -400,7 +404,58 @@ def _overview_stats(everyone, convo, open_problems):
 		"problems_crashes": sum(1 for p in open_problems if p["kind"] == "crash"),
 		"people_hurt": sum(p["people"] for p in open_problems),
 		"reminders_7d": frappe.db.count(REMINDER, {"sent_at": [">=", week]}),
+		"android_versions": android_versions(active, mon._min_os().get("android", 0)),
+		"events_by_day": _events_by_day(app, 14),
+		"tickets_by_status": {
+			"waiting": sum(1 for c in open_convo if c["waiting"]),
+			"answered": sum(1 for c in open_convo if not c["waiting"]),
+			"resolved": len(convo) - len(open_convo),
+		},
+		"health": {k: cint(health.get(k)) for k in ("low_battery", "low_storage", "offline", "outdated_os", "outdated_app")},
+		"app_mix": _app_mix(everyone),
 	}
+
+
+def android_versions(devices, min_major=0):
+	"""[{label, major, count, old}] for the Android devices, newest version first. `old` marks versions below the
+	minimum the site considers supported."""
+	counts = {}
+	for d in devices:
+		if (d.get("platform") or "").lower() != "android":
+			continue
+		major = cint(d.get("os_major")) or mon.os_major(d.get("os_version"))
+		if major:
+			counts[major] = counts.get(major, 0) + 1
+	return [{"label": f"Android {m}", "major": m, "count": n, "old": m < cint(min_major)} for m, n in sorted(counts.items(), reverse=True)]
+
+
+def _app_mix(everyone):
+	"""{app: {current, behind, away, unknown}} for the stacked adoption chart."""
+	out = {}
+	for p in everyone:
+		row = out.setdefault(p["app"], {"current": 0, "behind": 0, "away": 0, "unknown": 0})
+		key = {"current": "current", "forgot": "behind", "cant_update": "behind", "away": "away"}.get(p["bucket"], "unknown")
+		row[key] += 1
+	return out
+
+
+def _events_by_day(app, span):
+	"""Events reported per day for the last `span` days, by kind: [{day, crash, error, api, log}], oldest first."""
+	since = add_days(now_datetime(), -(span - 1)).date()
+	cond, params = ("AND app = %s", (str(since), app)) if app else ("", (str(since),))
+	by_day = {}
+	for r in frappe.db.sql(
+		f"SELECT DATE(ts) AS day, kind, COUNT(*) AS n FROM `tab{mon.EVENT}` WHERE DATE(ts) >= %s {cond} GROUP BY DATE(ts), kind",  # noqa: S608
+		params,
+		as_dict=True,
+	):
+		by_day.setdefault(str(r.day), {})[r.kind] = cint(r.n)
+	out = []
+	for i in range(span - 1, -1, -1):
+		day = str(add_days(now_datetime(), -i).date())
+		counts = by_day.get(day, {})
+		out.append({"day": day, **{k: counts.get(k, 0) for k in mon.KINDS}})
+	return out
 
 
 @frappe.whitelist(methods=["GET"])

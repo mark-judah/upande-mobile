@@ -231,19 +231,91 @@
     Object.keys(extra || {}).forEach(function (x) { k[x] = extra[x]; });
     return k;
   }
-  function bars(rows, total) {
+  /* charts: plain SVG / divs drawn with the design tokens, no library */
+  function svgEl(tag, attrs) {
+    var el = document.createElementNS(SVG, tag);
+    Object.keys(attrs || {}).forEach(function (k) { el.setAttribute(k, attrs[k]); });
+    return el;
+  }
+  function legend(items) {
+    return h('div', { class: 'ph-flex ph-flex--wrap', style: 'font-size:12px;color:var(--ink-mute);margin-top:var(--sp-3)' }, items.map(function (i) {
+      return h('span', { class: 'ph-flex', style: 'gap:6px' }, [h('i', { style: 'width:10px;height:10px;border-radius:3px;background:' + i[1] + ';display:inline-block' }), i[0]]);
+    }));
+  }
+  function hbars(rows) {
+    var max = Math.max.apply(null, rows.map(function (r) { return r.value; }).concat([1]));
     return rows.map(function (r) {
-      var pct = total ? Math.round(r[1] * 100 / total) : 0;
-      return h('div', { class: 'ph-hb' }, [h('div', { class: 'ph-hb__name' }, r[0]), h('div', { class: 'ph-hb__lane' }, h('div', { class: 'ph-hb__act', style: 'width:' + pct + '%' })), h('div', { class: 'ph-hb__pct' }, String(r[1]))]);
+      return h('div', { class: 'ph-hb' }, [h('div', { class: 'ph-hb__name' }, r.label), h('div', { class: 'ph-hb__lane' }, h('div', { class: 'ph-hb__act' + (r.cls ? ' ' + r.cls : ''), style: 'width:' + Math.round(r.value * 100 / max) + '%' })), h('div', { class: 'ph-hb__pct' }, String(r.value))]);
     });
   }
+  function stackedRows(rows, parts) {
+    return h('div', {}, rows.map(function (r) {
+      var total = parts.reduce(function (a, p) { return a + (r.segs[p.key] || 0); }, 0);
+      return h('div', { class: 'ph-hb', style: 'grid-template-columns:minmax(90px,150px) minmax(0,1fr) 48px' }, [
+        h('div', { class: 'ph-hb__name', title: r.label }, r.label),
+        h('div', { style: 'display:flex;height:16px;border-radius:var(--r-pill);overflow:hidden;background:var(--tint)' }, parts.map(function (p) {
+          var v = r.segs[p.key] || 0;
+          return v ? h('span', { title: p.label + ': ' + v, style: 'width:' + (v * 100 / total) + '%;background:' + p.color }) : null;
+        })),
+        h('div', { class: 'ph-hb__pct' }, String(total))
+      ]);
+    }));
+  }
+  function columns(days, parts) {
+    var W = 640, H = 190, L = 28, B = 22, T = 8, n = days.length, bw = (W - L) / n;
+    var max = Math.max.apply(null, days.map(function (d) { return parts.reduce(function (a, p) { return a + d[p.key]; }, 0); }).concat([1]));
+    var svg = svgEl('svg', { viewBox: '0 0 ' + W + ' ' + H, width: '100%', role: 'img', 'aria-label': 'Events per day', style: 'display:block' });
+    [0, 0.5, 1].forEach(function (f) {
+      var y = T + (H - B - T) * (1 - f);
+      svg.appendChild(svgEl('line', { x1: L, x2: W, y1: y, y2: y, stroke: 'var(--hairline-2)', 'stroke-width': 1 }));
+      var t = svgEl('text', { x: L - 6, y: y + 4, 'text-anchor': 'end', 'font-size': 10, fill: 'var(--ink-mute)' });
+      t.textContent = String(Math.round(max * f));
+      svg.appendChild(t);
+    });
+    days.forEach(function (d, i) {
+      var y = H - B, x = L + i * bw + bw * 0.18, w = bw * 0.64, tip = d.day + ': ';
+      parts.forEach(function (p) {
+        var v = d[p.key];
+        if (!v) return;
+        var hh = (H - B - T) * v / max;
+        y -= hh;
+        var r = svgEl('rect', { x: x, y: y, width: w, height: hh, rx: 2, style: 'fill:' + p.color });
+        var title = svgEl('title');
+        title.textContent = d.day + ' · ' + p.label + ': ' + v;
+        r.appendChild(title);
+        svg.appendChild(r);
+      });
+      if (i % 2 === (n - 1) % 2) {
+        var t = svgEl('text', { x: x + w / 2, y: H - 6, 'text-anchor': 'middle', 'font-size': 10, fill: 'var(--ink-mute)' });
+        t.textContent = d.day.slice(5);
+        svg.appendChild(t);
+      }
+    });
+    return svg;
+  }
+  function donut(segs, centre, sub) {
+    var total = segs.reduce(function (a, x) { return a + x.value; }, 0);
+    var svg = svgEl('svg', { viewBox: '0 0 42 42', width: 150, height: 150, role: 'img', 'aria-label': 'Tickets by status' });
+    svg.appendChild(svgEl('circle', { cx: 21, cy: 21, r: 15.9155, fill: 'none', stroke: 'var(--tint)', 'stroke-width': 5 }));
+    var off = 25;
+    segs.forEach(function (x) {
+      if (!x.value) return;
+      var len = x.value * 100 / total;
+      var c = svgEl('circle', { cx: 21, cy: 21, r: 15.9155, fill: 'none', 'stroke-width': 5, 'stroke-dasharray': len + ' ' + (100 - len), 'stroke-dashoffset': off, style: 'stroke:' + x.color });
+      var t = svgEl('title'); t.textContent = x.label + ': ' + x.value; c.appendChild(t);
+      svg.appendChild(c);
+      off -= len;
+    });
+    var n = svgEl('text', { x: 21, y: 23, 'text-anchor': 'middle', 'font-size': 8, 'font-weight': 600, fill: 'var(--ink)' }); n.textContent = centre; svg.appendChild(n);
+    var m = svgEl('text', { x: 21, y: 28.5, 'text-anchor': 'middle', 'font-size': 3.2, fill: 'var(--ink-mute)' }); m.textContent = sub; svg.appendChild(m);
+    return svg;
+  }
   function overview() {
-    return Promise.all([call('today'), call('apps')]).then(function (res) {
-      var d = res[0], a = res[1].rows, s = d.stats;
+    return call('today', { app: appName }).then(function (d) {
+      var s = d.stats;
       var by = {};
       d.cards.forEach(function (c) { by[c.key] = c.count; });
       ['updates', 'support', 'crashlytics'].forEach(function (k) { setCount(k, by[k] || 0); });
-      var scoped = appName ? a.filter(function (x) { return x.app === appName; }) : a;
       var tileList = d.cards.map(function (c) {
         var t = cardCopy(c);
         return h('a', { class: 'ph-tile is-link', href: '#/' + c.route }, [
@@ -252,40 +324,33 @@
           h('div', { class: 'ph-muted', style: 'font-size:12px' }, t[2] + ' →')
         ]);
       });
-      var plat = Object.keys(s.platforms).map(function (k) { return [k === 'android' ? 'Android' : k === 'ios' ? 'iOS' : k, s.platforms[k]]; }).sort(function (x, y) { return y[1] - x[1]; });
-      var appRows = scoped.map(function (x) {
-        return h('tr', { class: 'is-link', onclick: function () { appName = x.app; go('updates'); } }, [
-          h('td', {}, who(x.app, x.version ? 'Version ' + x.version : 'No release found')),
-          h('td', { style: 'min-width:140px' }, x.adoption == null ? '—' : h('div', { class: 'ph-flex' }, [h('div', { class: 'ph-grow' }, progress(x.adoption)), h('span', { class: 'ph-strong' }, x.adoption + '%')])),
-          h('td', { class: 'is-num' }, String(x.people)),
-          h('td', { class: 'is-num' }, x.behind ? badge(String(x.behind), 'warn') : '0'),
-          h('td', { class: 'is-num' }, x.problems ? badge(String(x.problems), 'bad') : '0'),
-          h('td', { class: 'is-num' }, String(x.open_tickets))
-        ]);
-      });
+      var mixParts = [{ key: 'current', label: 'Up to date', color: 'var(--good)' }, { key: 'behind', label: 'Behind', color: 'var(--warn)' }, { key: 'away', label: 'Not seen lately', color: 'var(--ink-faint)' }, { key: 'unknown', label: 'Unknown', color: 'var(--hairline-3)' }];
+      var mixRows = Object.keys(s.app_mix).sort().map(function (k) { return { label: k, segs: s.app_mix[k] }; });
+      var kindParts = [{ key: 'crash', label: 'Crashes', color: 'var(--bad)' }, { key: 'error', label: 'Errors', color: 'var(--warn)' }, { key: 'api', label: 'API failures', color: 'var(--signal)' }, { key: 'log', label: 'Logs', color: 'var(--ink-faint)' }];
+      var evTotal = s.events_by_day.reduce(function (a, x) { return a + x.crash + x.error + x.api + x.log; }, 0);
+      var tk = s.tickets_by_status;
+      var healthRows = [['low_battery', 'Low battery'], ['low_storage', 'Low storage'], ['offline', 'Offline'], ['outdated_os', 'Old system'], ['outdated_app', 'Old app']].map(function (x) { return { label: x[1], value: s.health[x[0]] || 0, cls: x[0] === 'outdated_app' ? 'mid' : 'low' }; });
       mount([
-        head('IT dashboard', 'Overview', 'Your apps, people and devices at a glance, and what needs attention.'),
+        head('IT dashboard', 'Overview', plural(s.apps_total, 'app') + ' · ' + plural(s.people, 'person', 'people') + ' · ' + plural(s.devices_active, 'device') + '. What needs attention is at the bottom.'),
         filters([appSelect()]),
         kpis([
-          stat('Apps', s.apps_total, s.apps_live + ' live · ' + s.apps_with_apk + ' on the app store'),
           stat('People', s.people, s.people_current + ' on the current version'),
-          stat('Adoption', s.adoption == null ? '—' : s.adoption + '%', 'of people on the current version'),
-          stat('Devices', s.devices_active, s.devices_active_7d + ' used this week · ' + s.devices_new_7d + ' new')
+          stat('Devices', s.devices_active, s.devices_active_7d + ' used this week · ' + s.devices_new_7d + ' new'),
+          stat('Adoption', s.adoption == null ? '—' : s.adoption + '%', 'on the current version', { onClick: function () { go('updates'); } }),
+          stat('Open tickets', s.tickets_open, s.tickets_waiting + ' waiting for an answer', { onClick: function () { go('support'); }, dark: s.tickets_waiting > 0 })
         ]),
-        kpis([
-          stat('Need to update', s.people_behind, s.people_away + ' not seen lately', { onClick: function () { go('updates'); }, dark: s.people_behind > 0 }),
-          stat('Open tickets', s.tickets_open, s.tickets_waiting + ' waiting for an answer', { onClick: function () { go('support'); } }),
-          stat('Open issues', s.problems_open, s.people_hurt + ' users affected · ' + plural(s.problems_crashes, 'crash', 'crashes'), { onClick: function () { go('crashlytics'); } }),
-          stat('Reminders sent', s.reminders_7d, 'in the last 7 days')
-        ]),
-        d.cards.length ? card('Needs attention', '', h('div', { class: 'ph-tiles ph-tiles--sm' }, tileList)) : card('Needs attention', '', empty('All clear', 'Nobody is waiting, nothing is broken and everyone is up to date.')),
         h('div', { class: 'ph-row ph-row--2-1' }, [
-          card('Apps', plural(scoped.length, 'app'), scoped.length ? table([{ label: 'App' }, { label: 'On current version' }, { label: 'People', num: true }, { label: 'Behind', num: true }, { label: 'Issues', num: true }, { label: 'Tickets', num: true }], appRows) : empty('No apps yet'), true),
+          card('App versions', 'people by update state', mixRows.length ? [stackedRows(mixRows, mixParts), legend(mixParts.map(function (p) { return [p.label, p.color]; }))] : empty('No people yet')),
+          card('Android versions', s.android_versions.length ? plural(s.android_versions.reduce(function (a, x) { return a + x.count; }, 0), 'device') : '', s.android_versions.length ? [h('div', {}, hbars(s.android_versions.map(function (v) { return { label: v.label, value: v.count, cls: v.old ? 'low' : '' }; }))), s.android_versions.some(function (v) { return v.old; }) ? h('div', { class: 'ph-muted', style: 'font-size:12px;margin-top:var(--sp-3)' }, 'Red = older than the supported minimum.') : null] : empty('No Android devices yet'))
+        ]),
+        h('div', { class: 'ph-row ph-row--2-1' }, [
+          card('Events reported', 'last 14 days · ' + evTotal.toLocaleString(), evTotal ? [columns(s.events_by_day, kindParts), legend(kindParts.map(function (p) { return [p.label, p.color]; }))] : empty('Nothing reported', 'No crashes, errors or failed requests in 14 days.')),
           h('div', {}, [
-            card('Devices by platform', s.devices_active + ' active', plat.length ? bars(plat, s.devices_active) : empty('No devices yet')),
-            card('Device status', '', h('dl', { class: 'ph-kv' }, [['Active', s.devices_active], ['Lost', s.devices_lost], ['Retired', s.devices_retired], ['New this week', s.devices_new_7d]].reduce(function (acc, p) { acc.push(h('dt', {}, p[0]), h('dd', {}, String(p[1]))); return acc; }, [])))
+            card('Support tickets', plural(s.tickets_total, 'ticket'), s.tickets_total ? h('div', { class: 'ph-flex', style: 'gap:var(--sp-5)' }, [donut([{ label: 'Waiting', value: tk.waiting, color: 'var(--bad)' }, { label: 'Answered', value: tk.answered, color: 'var(--signal)' }, { label: 'Resolved', value: tk.resolved, color: 'var(--good)' }], String(s.tickets_total), 'tickets'), h('div', { class: 'ph-grow' }, [['Waiting', tk.waiting, 'var(--bad)'], ['Answered', tk.answered, 'var(--signal)'], ['Resolved', tk.resolved, 'var(--good)']].map(function (x) { return h('div', { class: 'ph-flex ph-flex--between', style: 'padding:4px 0' }, [h('span', { class: 'ph-flex', style: 'gap:8px' }, [h('i', { style: 'width:10px;height:10px;border-radius:3px;display:inline-block;background:' + x[2] }), x[0]]), h('b', {}, String(x[1]))]); }))]) : empty('No tickets yet')),
+            card('Device health', '', hbars(healthRows))
           ])
-        ])
+        ]),
+        d.cards.length ? card('Needs attention', '', h('div', { class: 'ph-tiles ph-tiles--sm' }, tileList)) : card('Needs attention', '', empty('All clear', 'Nobody is waiting, nothing is broken and everyone is up to date.'))
       ]);
     });
   }
