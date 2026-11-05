@@ -32,7 +32,6 @@
   "column_break_monitoring",
   "event_retention_days",
   "reminders_section",
-  "grace_days",
   "column_break_rem",
   "nudge_after_days"
  ],
@@ -196,13 +195,6 @@
    "fieldname": "reminders_section",
    "fieldtype": "Section Break",
    "label": "Update reminders"
-  },
-  {
-   "fieldname": "grace_days",
-   "fieldtype": "Int",
-   "default": "3",
-   "description": "Days after a release before people appear on the chase list.",
-   "label": "Grace Period (days)"
   },
   {
    "fieldname": "column_break_rem",

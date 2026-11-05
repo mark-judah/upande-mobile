@@ -25,7 +25,6 @@ IT_ROLE = "IT Support"
 REMINDER = "Mobile Reminder"
 INSTALL = "Mobile App Install"
 MOBILE_APP = "Mobile App"
-DEFAULT_GRACE_DAYS = 3
 REMIND_COOLDOWN_HOURS = 20
 AUTO_MAX = 3
 AUTO_GAP_DAYS = 3
@@ -84,12 +83,11 @@ def days_between(earlier, later):
 	return max(delta.days, 0)
 
 
-def person_bucket(status, days_behind, grace_days):
+def person_bucket(status):
 	"""Where a person sits on the chase list.
 
-	forgot      reopening the app would be enough (behind_ota), past the grace period
-	cant_update a new install is needed (needs_apk), past the grace period
-	grace       behind, but the release is still inside the grace period
+	forgot      reopening the app would be enough (behind_ota)
+	cant_update a new install is needed (needs_apk)
 	away        not seen for a long time (dormant)
 	current     up to date (or ahead)
 	unknown     nothing to compare against
@@ -98,11 +96,11 @@ def person_bucket(status, days_behind, grace_days):
 		return "away"
 	if status in ("current", "ahead"):
 		return "current"
-	if status not in BEHIND:
-		return "unknown"
-	if days_behind is not None and days_behind < cint(grace_days):
-		return "grace"
-	return "forgot" if status == "behind_ota" else "cant_update"
+	if status == "behind_ota":
+		return "forgot"
+	if status == "needs_apk":
+		return "cant_update"
+	return "unknown"
 
 
 def wait_state(status, last_by_reporter_at, last_staff_at, created):
@@ -158,14 +156,9 @@ def _app_rows():
 		for r in frappe.get_all(
 			MOBILE_APP,
 			filters={"enabled": 1},
-			fields=["name", "latest_version", "latest_runtime", "latest_apk_version", "published_at", "dormant_days", "grace_days", "nudge_after_days"],
+			fields=["name", "latest_version", "latest_runtime", "latest_apk_version", "published_at", "dormant_days", "nudge_after_days"],
 		)
 	}
-
-
-def _grace(app_row):
-	value = app_row.get("grace_days")
-	return DEFAULT_GRACE_DAYS if value is None else cint(value)
 
 
 def _teams(users):
@@ -231,7 +224,7 @@ def people(app=None):
 				"target": app_row.latest_version or "",
 				"status": status,
 				"update_to": update_to,
-				"bucket": person_bucket(status, days_behind, _grace(app_row)),
+				"bucket": person_bucket(status),
 				"released_days_ago": days_behind,
 				"last_seen": str(seen or ""),
 				"days_unseen": days_between(seen, now_dt),
@@ -261,7 +254,7 @@ def updates(app=None, bucket=None, search=None):
 	if bucket:
 		rows = [p for p in rows if p["bucket"] == bucket]
 	else:
-		rows = [p for p in rows if p["bucket"] in ("forgot", "cant_update", "grace")]
+		rows = [p for p in rows if p["bucket"] in ("forgot", "cant_update")]
 	term = mon._text(search).lower()[:60]
 	if term:
 		rows = [p for p in rows if term in (p["full_name"] + " " + p["user"] + " " + p["team"]).lower()]
@@ -308,7 +301,7 @@ def remind(people_list=None, force=0):
 		key = (mon._text(w.get("user")), mon._text(w.get("app")))
 		person = current.get(key)
 		item = {"user": key[0], "app": key[1]}
-		if not person or person["bucket"] not in ("forgot", "cant_update", "grace"):
+		if not person or person["bucket"] not in ("forgot", "cant_update"):
 			item["result"] = "not_behind"
 		elif not cint(force) and not reminder_allowed(person["last_reminded"] or None, now_dt):
 			item["result"] = "recent"
@@ -418,7 +411,7 @@ def _overview_stats(everyone, convo, open_problems):
 		"people": len(everyone),
 		"people_current": current,
 		"adoption": round(current * 100 / reachable) if reachable else None,
-		"people_behind": sum(1 for p in everyone if p["bucket"] in ("forgot", "cant_update", "grace")),
+		"people_behind": sum(1 for p in everyone if p["bucket"] in ("forgot", "cant_update")),
 		"people_away": sum(1 for p in everyone if p["bucket"] == "away"),
 		"devices": len(devices),
 		"devices_active": len(active),
@@ -449,7 +442,7 @@ def apps():
 	for name, a in sorted(app_rows.items()):
 		mine = [p for p in everyone if p["app"] == name]
 		current = sum(1 for p in mine if p["bucket"] == "current")
-		behind = sum(1 for p in mine if p["bucket"] in ("forgot", "cant_update", "grace"))
+		behind = sum(1 for p in mine if p["bucket"] in ("forgot", "cant_update"))
 		out.append(
 			{
 				"app": name,
@@ -463,7 +456,6 @@ def apps():
 				"problems": sum(1 for p in problems if p["app"] == name),
 				"people_hurt": sum(p["people"] for p in problems if p["app"] == name),
 				"open_tickets": sum(1 for c in convo if c["app"] == name and c["status"] not in ("Resolved", "Closed")),
-				"grace_days": _grace(a),
 				"nudge_after_days": cint(a.nudge_after_days),
 			}
 		)
@@ -471,14 +463,12 @@ def apps():
 
 
 @frappe.whitelist(methods=["POST"])
-def set_app_policy(app, grace_days=None, nudge_after_days=None):
-	"""Per-app reminder settings. Grace 0..60 days; auto-remind 0 (off) or 1..60 days."""
+def set_app_policy(app, nudge_after_days=None):
+	"""Per-app reminder setting: auto-remind after 0 (off) or 1..60 days."""
 	_require_it()
 	if not frappe.db.exists(MOBILE_APP, app):
 		frappe.throw(_("Unknown app."), frappe.DoesNotExistError)
 	values = {}
-	if grace_days is not None:
-		values["grace_days"] = max(0, min(cint(grace_days), 60))
 	if nudge_after_days is not None:
 		values["nudge_after_days"] = max(0, min(cint(nudge_after_days), 60))
 	if values:

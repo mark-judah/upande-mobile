@@ -175,6 +175,8 @@
       if (on) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
     });
     document.getElementById('crumb').textContent = TITLES[key];
+    var pg = document.querySelector('.ph-page');
+    if (pg) pg.classList.toggle('ph-page--wide', key === 'support');
     root.classList.remove('is-drawer-open');
     var screens = { overview: overview, updates: updates, devices: devices, problems: problems, support: support, apps: apps };
     Promise.resolve(screens[key](r)).then(markUpdated).catch(function (e) { mount(errState(e)); });
@@ -267,14 +269,14 @@
   }
 
   /* ---------- Updates ---------- */
-  var BUCKETS = [['', 'Needs chasing'], ['forgot', 'Forgot to update'], ['cant_update', 'Needs a new install'], ['grace', 'Still within grace'], ['away', 'Not seen lately'], ['current', 'Up to date']];
+  var BUCKETS = [['', 'Needs chasing'], ['forgot', 'Forgot to update'], ['cant_update', 'Needs a new install'], ['away', 'Not seen lately'], ['current', 'Up to date']];
   function updates(r) {
     var bucket = r.q.get('bucket') || '';
     var q = r.q.get('search') || '';
     var selected = {};
     return call('updates', { app: appName, bucket: bucket, search: q }).then(function (d) {
-      var chased = (d.counts.forgot || 0) + (d.counts.cant_update || 0) + (d.counts.grace || 0);
-      var actionable = bucket === '' || bucket === 'forgot' || bucket === 'cant_update' || bucket === 'grace';
+      var chased = (d.counts.forgot || 0) + (d.counts.cant_update || 0);
+      var actionable = bucket === '' || bucket === 'forgot' || bucket === 'cant_update';
       var sendBtn = h('button', { class: 'ph-btn ph-btn--primary', type: 'button', disabled: true, onclick: function () { send(Object.keys(selected).map(function (k) { return selected[k]; })); } }, 'Remind selected');
       function sync() {
         var n = Object.keys(selected).length;
@@ -300,14 +302,14 @@
       } });
       var rows = d.rows.map(function (p) {
         var key = p.user + '|' + p.app;
-        var can = p.bucket === 'forgot' || p.bucket === 'cant_update' || p.bucket === 'grace';
+        var can = p.bucket === 'forgot' || p.bucket === 'cant_update';
         var cb = h('input', { type: 'checkbox', class: 'pick', 'aria-label': 'Select ' + p.full_name, onchange: function (ev) { if (ev.target.checked) selected[key] = p; else delete selected[key]; sync(); } });
         return h('tr', {}, [
           h('td', {}, can ? cb : null),
           h('td', {}, who(p.full_name, p.team ? p.team + ' · ' + p.user : p.user)),
           h('td', {}, p.app),
           h('td', {}, [p.installed || '—', ' → ', p.target || '—']),
-          h('td', {}, p.bucket === 'cant_update' ? badge('Needs new install', 'bad') : p.bucket === 'forgot' ? badge('Forgot to update', 'warn') : p.bucket === 'grace' ? badge('Within grace', 'signal') : p.bucket === 'away' ? badge('Not seen lately') : badge('Up to date', 'good')),
+          h('td', {}, p.bucket === 'cant_update' ? badge('Needs new install', 'bad') : p.bucket === 'forgot' ? badge('Forgot to update', 'warn') : p.bucket === 'away' ? badge('Not seen lately') : badge('Up to date', 'good')),
           h('td', { class: 'is-num' }, p.bucket === 'current' || p.bucket === 'away' ? '—' : days(p.released_days_ago)),
           h('td', {}, ago(p.last_seen)),
           h('td', {}, p.reminded ? (p.reminded === 1 ? 'Once' : p.reminded + ' times') + ' · ' + ago(p.last_reminded) : h('span', { class: 'ph-muted' }, 'Never')),
@@ -316,7 +318,7 @@
       });
       var cols = [{ label: '' }, { label: 'Person' }, { label: 'App' }, { label: 'Has → needs' }, { label: 'State' }, { label: 'Release age', num: true }, { label: 'Last seen' }, { label: 'Reminders' }, { label: '' }];
       mount([
-        head('IT dashboard · Updates', 'Who needs to update', 'People appear once a release is older than the grace period set for their app. Reminders go out as push notifications.'),
+        head('IT dashboard · Updates', 'Who needs to update', 'Everyone running an older version than the current release. Reminders go out as push notifications.'),
         filters([
           pills(BUCKETS.map(function (b) { return [b[0], b[1], b[0] === '' ? chased : (d.counts[b[0]] || 0)]; }), bucket, function (v) { go('updates' + (v ? '?bucket=' + v : '')); }),
           appSelect(),
@@ -447,59 +449,92 @@
   }
 
   /* ---------- Support (inbox + chat) ---------- */
+  function initials(name) {
+    var parts = String(name || '?').replace(/@.*/, '').split(/[\s._-]+/).filter(Boolean);
+    return ((parts[0] || '?')[0] + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase();
+  }
   function support(r) {
     var status = r.q.get('status') || '';
+    var onlyWaiting = r.q.get('waiting') === '1';
     var open = r.parts[1] || '';
     return call('inbox', { app: appName, status: status }).then(function (d) {
-      var list = h('section', { class: 'ph-card itd-inbox' });
-      if (!d.rows.length) list.appendChild(empty('No conversations yet'));
-      d.rows.forEach(function (c) {
-        var done = c.status === 'Resolved' || c.status === 'Closed';
-        list.appendChild(h('button', { type: 'button', class: 'itd-thread' + (c.id === open ? ' is-on' : ''), onclick: function () { go('support/' + encodeURIComponent(c.id) + (status ? '?status=' + status : '')); } }, [
-          h('b', {}, c.person || c.user), h('p', {}, (c.email && c.email !== c.person ? c.email + ' · ' : '') + c.subject + ' — ' + c.preview),
-          h('div', { class: 'ph-flex ph-flex--wrap' }, [c.waiting ? badge('Waiting ' + (c.waiting_hours < 1 ? 'under an hour' : plural(c.waiting_hours, 'hour')), c.waiting_hours >= 24 ? 'bad' : 'warn') : badge(done ? c.status : 'Answered', done ? 'good' : ''), badge(c.app, 'outline'), h('span', { class: 'ph-muted', style: 'font-size:12px' }, ago(c.last_activity))])
-        ]));
-      });
-      var pane = h('div', {}, open ? card('', '', empty('Loading…')) : card('', '', empty('Pick a conversation', 'Read it and answer here. The answer reaches their phone as a notification.')));
-      mount([
-        head('IT dashboard · Support', 'Support inbox', d.waiting ? plural(d.waiting, 'person', 'people') + ' waiting. The longest wait is on top.' : 'Nobody is waiting for an answer.'),
-        filters([appSelect(), d.statuses.length ? select([['', 'Any status']].concat(d.statuses.map(function (s) { return [s, s]; })), status, function (v) { go('support' + (v ? '?status=' + v : '')); }, 'Status') : null]),
-        h('div', { class: 'itd-support' }, [list, pane])
+      var rows = onlyWaiting ? d.rows.filter(function (c) { return c.waiting; }) : d.rows;
+      if (!open && rows.length && window.innerWidth > 1000) open = rows[0].id;
+      function nav(over) { var o = { status: status, waiting: onlyWaiting ? '1' : '' }; Object.keys(over).forEach(function (k) { o[k] = over[k]; }); go('support?' + qs(o)); }
+      var list = h('section', { class: 'ph-card itd-inbox' }, [
+        h('div', { class: 'itd-pane__head' }, [h('div', { class: 'ph-card__title' }, 'Conversations'), h('div', { class: 'ph-card__meta' }, plural(rows.length, 'conversation'))]),
+        h('div', { class: 'itd-pane__body' }, rows.length ? rows.map(function (c) {
+          var done = c.status === 'Resolved' || c.status === 'Closed';
+          var url = 'support/' + encodeURIComponent(c.id) + '?' + qs({ status: status, waiting: onlyWaiting ? '1' : '' });
+          return h('button', { type: 'button', class: 'itd-thread' + (c.id === open ? ' is-on' : ''), onclick: function () { go(url); } }, [
+            h('div', { class: 'ph-avatar' }, initials(c.person || c.user)),
+            h('div', { class: 'itd-thread__main' }, [
+              h('div', { class: 'ph-flex ph-flex--between' }, [h('b', {}, c.person || c.user), h('span', { class: 'ph-muted', style: 'font-size:11px;white-space:nowrap' }, ago(c.last_activity))]),
+              h('div', { class: 'itd-thread__email' }, c.email && c.email !== c.person ? c.email : c.app),
+              h('p', {}, c.subject + (c.preview ? ' — ' + c.preview : '')),
+              h('div', { class: 'ph-flex ph-flex--wrap' }, [c.waiting ? badge('Waiting ' + (c.waiting_hours < 1 ? 'under an hour' : plural(c.waiting_hours, 'hour')), c.waiting_hours >= 24 ? 'bad' : 'warn') : badge(done ? c.status : 'Answered', done ? 'good' : ''), badge(c.app, 'outline')])
+            ])
+          ]);
+        }) : empty('No conversations', onlyWaiting ? 'Nobody is waiting for an answer.' : 'Reports and chats from the apps appear here.'))
       ]);
-      if (open) openConversation(open, pane);
-      timer = setInterval(function () { if (!document.hidden && !document.querySelector('.itd-compose textarea:focus')) render(); }, 30000);
+      var chatSlot = h('div', { class: 'itd-slot' }, card('', '', empty('Pick a conversation', 'Read it and answer here. The answer reaches their phone as a notification.')));
+      var infoSlot = h('div', { class: 'itd-slot itd-slot--info' });
+      mount([
+        filters([
+          pills([['', 'All', d.rows.length], ['1', 'Waiting', d.waiting]], onlyWaiting ? '1' : '', function (v) { nav({ waiting: v }); }),
+          appSelect(),
+          d.statuses.length ? select([['', 'Any status']].concat(d.statuses.map(function (x) { return [x, x]; })), status, function (v) { nav({ status: v }); }, 'Status') : null
+        ]),
+        h('div', { class: 'itd-msgr' }, [list, chatSlot, infoSlot])
+      ]);
+      if (open) openConversation(open, chatSlot, infoSlot);
+      timer = setInterval(function () {
+        var t = document.querySelector('.itd-compose textarea');
+        if (!document.hidden && !(t && t.value)) render();
+      }, 30000);
     });
   }
-  function openConversation(id, pane) {
+  function openConversation(id, chatSlot, infoSlot) {
     return call('conversation', { id: id }).then(function (c) {
-      var msgs = h('div', { class: 'itd-msgs' }, c.messages.map(function (m) {
-        return h('div', { class: 'itd-msg ' + (m.from_staff ? 'staff' : 'person') }, [m.image ? h('a', { href: m.image, target: '_blank', rel: 'noopener' }, h('img', { src: m.image, alt: 'Screenshot sent with the message', loading: 'lazy', onload: function () { msgs.scrollTop = msgs.scrollHeight; } })) : null, m.text, h('small', {}, (m.by || (m.from_staff ? 'Support' : c.person)) + ' · ' + ago(m.sent_at))]);
-      }));
       var sendBtn;
-      var text = h('textarea', { class: 'ph-control', rows: 2, placeholder: 'Write an answer. It reaches their phone as a notification.', onkeydown: function (e) { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); sendBtn.click(); } } });
+      var msgs = h('div', { class: 'itd-msgs' }, c.messages.map(function (m) {
+        return h('div', { class: 'itd-msg ' + (m.from_staff ? 'staff' : 'person') }, [
+          m.image ? h('a', { href: m.image, target: '_blank', rel: 'noopener' }, h('img', { src: m.image, alt: 'Screenshot sent with the message', loading: 'lazy', onload: function () { msgs.scrollTop = msgs.scrollHeight; } })) : null,
+          h('div', { class: 'itd-msg__text' }, m.text),
+          h('small', {}, (m.by || (m.from_staff ? 'Support' : c.person)) + ' · ' + ago(m.sent_at))
+        ]);
+      }));
+      var text = h('textarea', { class: 'ph-control', rows: 1, placeholder: 'Write an answer…', oninput: function () { text.style.height = 'auto'; text.style.height = Math.min(text.scrollHeight, 160) + 'px'; }, onkeydown: function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendBtn.click(); } } });
       sendBtn = h('button', { class: 'ph-btn ph-btn--primary', type: 'button', onclick: function () {
         var v = text.value.trim();
         if (!v) return;
         sendBtn.disabled = true;
         call('send', { id: id, text: v }, true).then(function () { render(); }).catch(function (e) { fail(e); sendBtn.disabled = false; });
       } }, 'Send');
-      var meta = [];
-      if (c.device) meta.push(c.device + (c.os ? ' · ' + c.os : ''));
-      if (c.app_version) meta.push('app ' + c.app_version);
-      var el = h('section', { class: 'ph-card itd-chat' }, [
-        h('div', { class: 'itd-chat__head ph-flex ph-flex--wrap' }, [
-          h('div', { class: 'ph-grow' }, [h('div', { class: 'ph-card__title' }, c.person), h('div', { class: 'ph-muted', style: 'font-size:12px' }, (c.email && c.email !== c.person ? c.email + ' · ' : '') + c.subject + (c.app ? ' · ' + c.app : ''))]),
-          c.statuses.length ? select(c.statuses.map(function (s) { return [s, s]; }), c.status, function (v) { call('set_conversation_status', { id: id, status: v }, true).then(function () { toast('Status: ' + v, 'good'); render(); }).catch(fail); }, 'Status') : null
+      var chat = h('section', { class: 'ph-card itd-chat' }, [
+        h('div', { class: 'itd-pane__head' }, [
+          h('div', { class: 'ph-avatar' }, initials(c.person)),
+          h('div', { class: 'ph-grow' }, [h('div', { class: 'ph-card__title' }, c.person), h('div', { class: 'ph-muted', style: 'font-size:12px' }, (c.email && c.email !== c.person ? c.email + ' · ' : '') + c.subject)]),
+          c.statuses.length ? select(c.statuses.map(function (x) { return [x, x]; }), c.status, function (v) { call('set_conversation_status', { id: id, status: v }, true).then(function () { toast('Status: ' + v, 'good'); render(); }).catch(fail); }, 'Status') : null
         ]),
-        msgs
+        msgs,
+        h('div', { class: 'itd-compose' }, [text, sendBtn]),
+        h('div', { class: 'itd-hint' }, 'Enter sends · Shift+Enter for a new line · the answer arrives as a notification')
       ]);
-      if (meta.length) el.appendChild(h('div', { class: 'itd-chatmeta ph-muted', style: 'font-size:12px' }, meta.join(' · ')));
-      el.appendChild(h('div', { class: 'itd-compose' }, [text, sendBtn]));
-      if (c.developer) el.appendChild(h('div', { class: 'itd-chatmeta' }, h('details', { class: 'itd-dev', style: 'margin:0' }, [h('summary', {}, 'Developer details'), h('pre', { class: 'itd-code' }, JSON.stringify(c.developer.diagnostics || {}, null, 2)), h('a', { class: 'ph-link', href: c.developer.desk_url }, 'Open in Desk')])));
-      clear(pane);
-      pane.appendChild(el);
+      clear(chatSlot);
+      chatSlot.appendChild(chat);
       msgs.scrollTop = msgs.scrollHeight;
-    }).catch(function (e) { clear(pane); pane.appendChild(card('', '', errState(e))); });
+      var kv = h('dl', { class: 'ph-kv' });
+      [['Name', c.person], ['Email', c.email], ['App', c.app], ['App version', c.app_version], ['Device', c.device], ['System', c.os], ['Status', c.status]].forEach(function (p) {
+        if (!p[1]) return;
+        kv.appendChild(h('dt', {}, p[0]));
+        kv.appendChild(h('dd', {}, p[1]));
+      });
+      var info = h('section', { class: 'ph-card itd-info' }, [h('div', { class: 'ph-card__head' }, h('div', { class: 'ph-card__title' }, 'Details')), kv]);
+      if (c.developer) info.appendChild(h('details', { class: 'itd-dev' }, [h('summary', {}, 'Developer details'), h('pre', { class: 'itd-code' }, JSON.stringify(c.developer.diagnostics || {}, null, 2)), h('a', { class: 'ph-link', href: c.developer.desk_url }, 'Open in Desk')]));
+      clear(infoSlot);
+      infoSlot.appendChild(info);
+    }).catch(function (e) { clear(chatSlot); chatSlot.appendChild(card('', '', errState(e))); });
   }
 
   /* ---------- Apps ---------- */
@@ -507,7 +542,6 @@
     return call('apps').then(function (d) {
       var tot = d.rows.reduce(function (a, x) { a.people += x.people; a.behind += x.behind; a.problems += x.problems; a.tickets += x.open_tickets; return a; }, { people: 0, behind: 0, problems: 0, tickets: 0 });
       var rows = d.rows.map(function (a) {
-        var grace = h('input', { class: 'ph-table-input', type: 'number', min: 0, max: 60, value: a.grace_days, 'aria-label': 'Grace days for ' + a.app });
         var nudge = h('input', { class: 'ph-table-input', type: 'number', min: 0, max: 60, value: a.nudge_after_days, 'aria-label': 'Auto-remind days for ' + a.app });
         return h('tr', {}, [
           h('td', {}, who(a.app, a.version ? 'Version ' + a.version + (a.released_days_ago != null ? ' · released ' + days(a.released_days_ago) + (a.released_days_ago ? ' ago' : '') : '') : 'No release found yet')),
@@ -517,13 +551,13 @@
           h('td', { class: 'is-num' }, String(a.away)),
           h('td', { class: 'is-num' }, a.problems ? badge(plural(a.problems, 'problem') + ' · ' + a.people_hurt + ' hit', 'bad') : '0'),
           h('td', { class: 'is-num' }, String(a.open_tickets)),
-          h('td', { style: 'width:90px' }, grace), h('td', { style: 'width:90px' }, nudge),
-          h('td', {}, h('button', { class: 'ph-btn ph-btn--ghost ph-btn--sm', type: 'button', onclick: function () { call('set_app_policy', { app: a.app, grace_days: grace.value, nudge_after_days: nudge.value }, true).then(function () { toast('Saved ' + a.app, 'good'); }).catch(fail); } }, 'Save'))
+          h('td', { style: 'width:90px' }, nudge),
+          h('td', {}, h('button', { class: 'ph-btn ph-btn--ghost ph-btn--sm', type: 'button', onclick: function () { call('set_app_policy', { app: a.app, nudge_after_days: nudge.value }, true).then(function () { toast('Saved ' + a.app, 'good'); }).catch(fail); } }, 'Save'))
         ]);
       });
-      var cols = [{ label: 'App' }, { label: 'On current version' }, { label: 'People', num: true }, { label: 'Behind', num: true }, { label: 'Away', num: true }, { label: 'Problems', num: true }, { label: 'Open tickets', num: true }, { label: 'Grace (days)' }, { label: 'Auto-remind (days)' }, { label: '' }];
+      var cols = [{ label: 'App' }, { label: 'On current version' }, { label: 'People', num: true }, { label: 'Behind', num: true }, { label: 'Away', num: true }, { label: 'Problems', num: true }, { label: 'Open tickets', num: true }, { label: 'Auto-remind (days)' }, { label: '' }];
       mount([
-        head('IT dashboard · Apps', 'Your apps', 'Adoption is the share of people on the current version. Grace is how long a release can sit before people show on the chase list; auto-remind sends a push after that many days (0 turns it off).'),
+        head('IT dashboard · Apps', 'Your apps', 'Adoption is the share of people on the current version. Auto-remind sends a push to people still behind that many days after a release (0 turns it off).'),
         kpis([{ label: 'Apps', value: d.rows.length }, { label: 'People', value: tot.people }, { label: 'Behind', value: tot.behind }, { label: 'Open tickets', value: tot.tickets }]),
         card('', '', rows.length ? table(cols, rows) : empty('No apps are registered yet'), true)
       ]);

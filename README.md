@@ -166,11 +166,11 @@ The hourly job (`upande_mobile.api.devices.refresh_latest`) reads each enabled a
 | Screen | Shows |
 |---|---|
 | Overview | Headline numbers (apps, people, adoption, devices active this week, open tickets, problems, reminders sent), attention cards that open their screen, a per-app table and devices by platform |
-| Updates | The chase list. One row per person and app: version they have and need, how long ago the release came out, last seen, team (from Employee, when present), how many reminders they had. Groups: forgot to update (reopening the app is enough), needs a new install (an APK), still within grace, not seen lately, up to date. Select people and press **Remind** to send a push notification |
+| Updates | The chase list. One row per person and app: version they have and need, how long ago the release came out, last seen, team (from Employee, when present), how many reminders they had. Groups: forgot to update (reopening the app is enough), needs a new install (an APK), not seen lately, up to date. Select people and press **Remind** to send a push notification |
 | Devices | Inventory with serial number, MAC address, device IP, the IP the server saw and build number as columns, plus owner, model, app, health, battery, storage and last seen. Open a row to mark the device Active, Lost or Retired and add a note. Lost and retired devices drop off the chase list |
 | Problems | Open problems grouped by how they hurt: stopping people from working, getting in the way, worth knowing. Who was affected, mark resolved, or accept as known |
 | Support | The inbox (full name first, then email), longest wait on top, with **chat**; the screenshot a person sent shows inside their first message, like a chat app: read the conversation and answer in the page. The answer is stored on the conversation (a Comment on the Issue, so Desk still shows it) and pushed to the person's phone, so nobody has to open the Issue to reply. Change the status from the same page |
-| Apps | One row per app: share of people on the current version, behind, away, problems, open tickets, and the app's **grace period** and **auto-remind** setting |
+| Apps | One row per app: share of people on the current version, behind, away, problems, open tickets, and the app's **auto-remind** setting |
 
 ### App store
 
@@ -178,7 +178,6 @@ The hourly job (`upande_mobile.api.devices.refresh_latest`) reads each enabled a
 
 ### Reminders
 
-- **Grace period** (Mobile App, default 3 days): after a release, people are not chased until it is this old.
 - **Remind** sends a push ("Version 2.1.0 is ready. Close and reopen the app to get it", or "needs a fresh install" when an APK is required). Someone reminded in the last 20 hours is skipped, and the page says who has not allowed notifications. Every reminder is logged in **Mobile Reminder** (who, when, from which version to which, who sent it) and shown on the chase list as "reminded twice".
 - **Auto-remind** (Mobile App, default 0 = off): a daily job at 08:00 reminds people still behind that many days after a release, at most 3 times and 3 days apart.
 - A device marked Lost or Retired is never chased.

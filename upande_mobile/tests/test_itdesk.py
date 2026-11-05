@@ -13,23 +13,17 @@ NOW = datetime(2026, 11, 5, 12, 0, 0)
 
 
 class TestBuckets(unittest.TestCase):
-	def test_behind_inside_grace(self):
-		self.assertEqual(it.person_bucket("behind_ota", 1, 3), "grace")
-
-	def test_behind_past_grace_forgot(self):
-		self.assertEqual(it.person_bucket("behind_ota", 3, 3), "forgot")
+	def test_behind_ota_is_forgot(self):
+		self.assertEqual(it.person_bucket("behind_ota"), "forgot")
 
 	def test_needs_apk_is_cant_update(self):
-		self.assertEqual(it.person_bucket("needs_apk", 9, 3), "cant_update")
-
-	def test_unknown_release_age_counts_as_past_grace(self):
-		self.assertEqual(it.person_bucket("behind_ota", None, 3), "forgot")
+		self.assertEqual(it.person_bucket("needs_apk"), "cant_update")
 
 	def test_current_ahead_dormant_unknown(self):
-		self.assertEqual(it.person_bucket("current", 0, 3), "current")
-		self.assertEqual(it.person_bucket("ahead", 0, 3), "current")
-		self.assertEqual(it.person_bucket("dormant", 0, 3), "away")
-		self.assertEqual(it.person_bucket("unknown", 0, 3), "unknown")
+		self.assertEqual(it.person_bucket("current"), "current")
+		self.assertEqual(it.person_bucket("ahead"), "current")
+		self.assertEqual(it.person_bucket("dormant"), "away")
+		self.assertEqual(it.person_bucket("unknown"), "unknown")
 
 
 class TestWaiting(unittest.TestCase):
