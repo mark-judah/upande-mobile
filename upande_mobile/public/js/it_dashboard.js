@@ -152,6 +152,21 @@
     openDrawer = close;
     return close;
   }
+  /* a confirmation in the page's own modal instead of the browser's dialog: ask(title, text, buttonLabel, danger, onYes) */
+  function ask(title, text, label, danger, onYes) {
+    var overlay, onKey = function (e) { if (e.key === 'Escape') done(); };
+    function done() { document.removeEventListener('keydown', onKey); if (overlay) overlay.remove(); overlay = null; }
+    var yes = h('button', { class: 'ph-btn ' + (danger ? 'ph-btn--danger' : 'ph-btn--primary'), type: 'button', onclick: function () { done(); onYes(); } }, label || 'Confirm');
+    overlay = h('div', { class: 'ph-overlay', onclick: function (e) { if (e.target === overlay) done(); } },
+      h('div', { class: 'ph-modal', role: 'alertdialog', 'aria-modal': 'true', 'aria-label': title, style: 'width:min(440px,100%)' }, [
+        h('div', { class: 'ph-modal__head' }, h('div', { class: 'ph-modal__title' }, title)),
+        h('div', { class: 'ph-modal__body' }, h('div', {}, text)),
+        h('div', { class: 'ph-modal__foot' }, [h('button', { class: 'ph-btn ph-btn--ghost', type: 'button', onclick: done }, 'Cancel'), yes])
+      ]));
+    root.appendChild(overlay);
+    document.addEventListener('keydown', onKey);
+    yes.focus();
+  }
   function kvList(pairs, monoValues) {
     var kv = h('dl', { class: 'ph-kv' });
     pairs.forEach(function (p) { if (p[1] == null || p[1] === '') return; kv.appendChild(h('dt', {}, p[0])); kv.appendChild(h('dd', monoValues ? { class: 'ph-mono' } : {}, String(p[1]))); });
@@ -584,8 +599,9 @@
       return h('div', { class: 'ph-flex ph-flex--between', style: 'padding:var(--sp-2) 0;border-bottom:1px solid var(--hairline)' }, [
         h('span', { class: 'ph-strong' }, p),
         u.is_me ? null : h('button', { class: 'ph-btn ph-btn--ghost', type: 'button', onclick: function () {
-          if (!confirm('Take ' + p + ' away from ' + u.full_name + '?')) return;
-          call('usermgmt.remove_role_profile', { name: u.name, role_profile: p }, true).then(function () { toast('Removed ' + p, 'good'); close(); reopen(); }).catch(fail);
+          ask('Remove role profile', 'Take ' + p + ' away from ' + u.full_name + '?', 'Remove', true, function () {
+            call('usermgmt.remove_role_profile', { name: u.name, role_profile: p }, true).then(function () { toast('Removed ' + p, 'good'); close(); reopen(); }).catch(fail);
+          });
         } }, 'Remove')
       ]);
     }) : h('div', { class: 'ph-muted' }, 'No role profile, so no access yet.'));
@@ -608,8 +624,9 @@
     } }, 'Set')])]));
     if (u.history.length) body.appendChild(h('div', {}, [h('div', { class: 'ph-label', style: 'margin-bottom:var(--sp-2)' }, 'What IT changed'), h('div', {}, u.history.map(function (x) { return h('div', { style: 'padding:var(--sp-2) 0;border-bottom:1px solid var(--hairline)' }, [h('div', {}, x.text), h('div', { class: 'ph-muted', style: 'font-size:12px' }, ago(x.at))]); }))]));
     if (!u.is_me) body.appendChild(h('div', { style: 'padding-top:var(--sp-4);border-top:1px solid var(--hairline)' }, [h('button', { class: 'ph-btn ph-btn--danger', type: 'button', onclick: function () {
-      if (!confirm('Delete ' + u.full_name + ' (' + u.name + ')? This cannot be undone. To keep their history, disable the account instead.')) return;
-      call('usermgmt.delete', { name: u.name }, true).then(function () { toast('Deleted ' + u.name, 'good'); close(); render(); }).catch(fail);
+      ask('Delete user', 'Delete ' + u.full_name + ' (' + u.name + ')? This cannot be undone. To keep their history, disable the account instead.', 'Delete user', true, function () {
+        call('usermgmt.delete', { name: u.name }, true).then(function () { toast('Deleted ' + u.name, 'good'); close(); render(); }).catch(fail);
+      });
     } }, 'Delete user')]));
     close = drawer(u.full_name, u.name, body);
   }
@@ -700,8 +717,9 @@
         h('div', {}, [h('div', { class: 'ph-label', style: 'margin-bottom:var(--sp-2)' }, 'In these role profiles'), x.profiles.length ? h('div', { class: 'ph-flex ph-flex--wrap' }, x.profiles.map(function (p) { return badge(p, ''); })) : h('div', { class: 'ph-muted' }, 'None yet, so nobody has this role.')]),
         h('div', {}, [h('div', { class: 'ph-label', style: 'margin-bottom:var(--sp-2)' }, 'Give it to a role profile'), h('div', { class: 'ph-flex', style: 'gap:var(--sp-3)' }, [pick, h('button', { class: 'ph-btn', type: 'button', onclick: function () {
           if (!pick.value) return;
-          if (!confirm('Add ' + x.name + ' to ' + pick.value + '? Everyone on that profile will get it.')) return;
-          call('rolemgmt.add_role_to_profile', { role_profile: pick.value, role: x.name }, true).then(function (res) { toast('Added ' + x.name + ' to ' + res.role_profile + ' (' + plural(res.people, 'person', 'people') + ')', 'good'); c(); render(); }).catch(fail);
+          ask('Add role to profile', 'Add ' + x.name + ' to ' + pick.value + '? Everyone on that profile will get it.', 'Add role', false, function () {
+            call('rolemgmt.add_role_to_profile', { role_profile: pick.value, role: x.name }, true).then(function (res) { toast('Added ' + x.name + ' to ' + res.role_profile + ' (' + plural(res.people, 'person', 'people') + ')', 'good'); c(); render(); }).catch(fail);
+          });
         } }, 'Add')])])
       ]);
       c = drawer(x.name, x.desk_access ? 'Desk role' : 'Website role', body);
@@ -717,8 +735,9 @@
       h('div', {}, [h('div', { class: 'ph-label', style: 'margin-bottom:var(--sp-2)' }, 'Add a role'), typer, h('div', { style: 'margin-top:var(--sp-3)' }, h('button', { class: 'ph-btn', type: 'button', onclick: function () {
         var role = pickRole || typer.input.value.trim();
         if (!role) return;
-        if (!confirm('Add ' + role + ' to ' + p.name + '? Everyone on this profile (' + plural(p.people, 'person', 'people') + ') will get it.')) return;
-        call('rolemgmt.add_role_to_profile', { role_profile: p.name, role: role }, true).then(function (res) { toast('Added ' + role + ' to ' + res.role_profile + ' (' + plural(res.people, 'person', 'people') + ')', 'good'); c(); render(); }).catch(fail);
+        ask('Add role to profile', 'Add ' + role + ' to ' + p.name + '? Everyone on this profile (' + plural(p.people, 'person', 'people') + ') will get it.', 'Add role', false, function () {
+          call('rolemgmt.add_role_to_profile', { role_profile: p.name, role: role }, true).then(function (res) { toast('Added ' + role + ' to ' + res.role_profile + ' (' + plural(res.people, 'person', 'people') + ')', 'good'); c(); render(); }).catch(fail);
+        });
       } }, 'Add role'))])
     ]);
     c = drawer(p.name, 'Role profile', body);
@@ -753,8 +772,9 @@
         cb.checked = !!x[t];
         return h('td', { class: 'is-num' }, cb);
       })).concat([h('td', {}, x.locked ? null : h('button', { class: 'ph-btn ph-btn--ghost', type: 'button', onclick: function () {
-        if (!confirm('Remove the rule for ' + x.role + ' (level ' + x.permlevel + ') on ' + dt + '?')) return;
-        call('permmgmt.remove_rule', { doctype: dt, role: x.role, permlevel: x.permlevel, if_owner: x.if_owner }, true).then(function (res) { toast('Removed the rule for ' + x.role + ' on ' + dt, 'good'); apply(res); }).catch(fail);
+        ask('Remove rule', 'Remove the rule for ' + x.role + ' (level ' + x.permlevel + ') on ' + dt + '?', 'Remove rule', true, function () {
+          call('permmgmt.remove_rule', { doctype: dt, role: x.role, permlevel: x.permlevel, if_owner: x.if_owner }, true).then(function (res) { toast('Removed the rule for ' + x.role + ' on ' + dt, 'good'); apply(res); }).catch(fail);
+        });
       } }, 'Remove'))]));
     });
     var roleBox = typeahead('Role to give access', function (term) { var t = term.toLowerCase(); return Promise.resolve(d.roles.filter(function (n) { return !t || n.toLowerCase().indexOf(t) >= 0; }).slice(0, 12).map(function (n) { return { value: n, label: n }; })); }, function () {});
@@ -767,8 +787,9 @@
     } }, 'Add role');
     mount([
       head('IT dashboard · Doctype permissions', dt, d.customised ? 'These rules have been customised. Changes apply straight away.' : 'These are the rules the doctype shipped with. Your first change makes an editable copy.', h('button', { class: 'ph-btn ph-btn--ghost', type: 'button', onclick: function () {
-        if (!confirm('Put ' + dt + ' back to the rules it shipped with? Your changes to it will be lost.')) return;
-        call('permmgmt.reset_rules', { doctype: dt }, true).then(function (res) { toast(dt + ' is back to its default permissions', 'good'); apply(res); }).catch(fail);
+        ask('Reset to default', 'Put ' + dt + ' back to the rules it shipped with? Your changes to it will be lost.', 'Reset to default', true, function () {
+          call('permmgmt.reset_rules', { doctype: dt }, true).then(function (res) { toast(dt + ' is back to its default permissions', 'good'); apply(res); }).catch(fail);
+        });
       } }, 'Reset to default')),
       filters([tools]),
       card('', '', table(d.types.length ? head_.map(function (th) { return { label: th.textContent, num: th.className === 'is-num' }; }) : [], body), true),
@@ -786,8 +807,9 @@
           h('td', {}, who(x.full_name, x.user)), h('td', {}, x.allow), h('td', {}, h('span', { class: 'ph-strong' }, x.for_value)),
           h('td', {}, x.all_doctypes ? 'All doctypes' : x.applicable_for), h('td', {}, x.is_default ? badge('Default', 'signal') : '—'),
           h('td', {}, x.locked ? badge('Managed in Desk', '') : h('button', { class: 'ph-btn ph-btn--ghost', type: 'button', onclick: function () {
-            if (!confirm('Remove the ' + x.allow + ' ' + x.for_value + ' restriction from ' + x.full_name + '?')) return;
-            call('permmgmt.remove_user_permission', { name: x.name }, true).then(function () { toast('Removed the restriction from ' + x.full_name, 'good'); render(); }).catch(fail);
+            ask('Remove restriction', 'Remove the ' + x.allow + ' ' + x.for_value + ' restriction from ' + x.full_name + '?', 'Remove', true, function () {
+              call('permmgmt.remove_user_permission', { name: x.name }, true).then(function () { toast('Removed the restriction from ' + x.full_name, 'good'); render(); }).catch(fail);
+            });
           } }, 'Remove'))
         ]);
       });
