@@ -843,7 +843,7 @@ def install_rows(app=None, status=None, user=None, since_days=None, include_dorm
 		SELECT i.install_id, i.app, i.user, u.full_name, i.platform, i.device_brand, i.device_model,
 			i.device_name, i.os_version, i.app_version, i.runtime_version, i.previous_app_version,
 			i.version_changed_at, i.is_physical_device, i.ip_address, i.build_number, i.local_ip, i.mac_address,
-			i.serial_number, i.first_seen, i.last_seen,
+			i.serial_number, i.android_id, i.first_seen, i.last_seen,
 			i.launches, COALESCE(p.logins, 0) AS logins, i.device_key
 		FROM `tabMobile App Install` i
 		LEFT JOIN `tabUser` u ON u.name = i.user

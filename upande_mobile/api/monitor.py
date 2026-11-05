@@ -105,7 +105,7 @@ _STR_FACTS = (
 )
 # What a phone can say about itself that identifies it. Each is checked: a placeholder the OS hands out (the fixed
 # 02:00:00:00:00:00 MAC, "unknown" for a serial) is not a fact and is dropped, never stored.
-_IDENTITY_FACTS = ("build_number", "local_ip", "mac_address", "serial_number")
+_IDENTITY_FACTS = ("build_number", "local_ip", "mac_address", "serial_number", "android_id")
 _NO_SERIAL = {"unknown", "null", "none", "n/a", "na", "0", "undefined", "not available", "to be filled by o.e.m."}
 _BOOL_FACTS = ("is_physical_device", "low_power_mode", "is_connected", "is_internet_reachable")
 _INT_FACTS = (
@@ -186,6 +186,12 @@ def clean_serial(value):
 	return text
 
 
+def clean_android_id(value):
+	"""The Android ID: 16 hex characters (some phones give a few more or fewer). Anything else is not one."""
+	text = _text(value).lower()
+	return text if re.match(r"^[0-9a-f]{8,32}$", text) else ""
+
+
 def clean_build_number(value):
 	text = _text(value)[:20]
 	return text if re.match(r"^[0-9][0-9A-Za-z._-]*$", text) else ""
@@ -204,6 +210,7 @@ def clean_device(raw):
 		("local_ip", clean_ip),
 		("mac_address", clean_mac),
 		("serial_number", clean_serial),
+		("android_id", clean_android_id),
 	):
 		value = cleaner(raw.get(key))
 		if value:

@@ -444,6 +444,7 @@
           h('td', {}, [x.app, ' ', h('span', { class: 'ph-muted' }, x.app_version)]),
           h('td', {}, mono(x.serial_number)),
           h('td', {}, mono(x.mac_address)),
+          h('td', {}, mono(x.android_id)),
           h('td', {}, mono(x.local_ip || x.ip_seen)),
           h('td', {}, mono(x.build_number)),
           h('td', {}, x.state !== 'Active' ? badge(x.state, x.state === 'Lost' ? 'bad' : '') : (x.flags.length ? x.flags.map(function (f) { return badge(FLAG_TEXT[f] || f, f === 'outdated_app' ? 'warn' : 'bad'); }) : badge('Healthy', 'good'))),
@@ -452,9 +453,9 @@
           h('td', {}, ago(x.last_seen))
         ]));
       });
-      var cols = [{ label: 'Owner' }, { label: 'Device' }, { label: 'App' }, { label: 'Serial number' }, { label: 'MAC address' }, { label: 'IP address' }, { label: 'Build' }, { label: 'Health' }, { label: 'Battery', num: true }, { label: 'Free', num: true }, { label: 'Last seen' }];
+      var cols = [{ label: 'Owner' }, { label: 'Device' }, { label: 'App' }, { label: 'Serial number' }, { label: 'MAC address' }, { label: 'Device ID' }, { label: 'IP address' }, { label: 'Build' }, { label: 'Health' }, { label: 'Battery', num: true }, { label: 'Free', num: true }, { label: 'Last seen' }];
       mount([
-        head('IT dashboard · Devices', 'Phones and tablets', plural(d.total, 'device') + '. Click a row to see everything about it, mark it lost or retired, and add a note. Android hides the serial number and MAC address from most apps, so those can be empty.'),
+        head('IT dashboard · Devices', 'Phones and tablets', plural(d.total, 'device') + '. Click a row to see everything about it, mark it lost or retired, and add a note. Android hides the serial number and MAC address from most apps, so those can be empty; the Device ID is the Android ID, which every phone gives.'),
         filters([
           pills([['', 'All', d.total]].concat(Object.keys(FLAG_TEXT).filter(function (k) { return s[k] != null; }).map(function (k) { return [k, FLAG_TEXT[k], s[k]]; })), health, function (v) { nav({ health: v }); }),
           appSelect(),
@@ -472,7 +473,7 @@
     var body = h('div', { class: 'ph-stack ph-stack--lg' }, [
       h('div', { class: 'ph-flex ph-flex--wrap' }, x.flags.length ? x.flags.map(function (f) { return badge(FLAG_TEXT[f] || f, f === 'outdated_app' ? 'warn' : 'bad'); }) : [badge('Healthy', 'good')]),
       kvList([['Owner', x.owner_name], ['Email', x.owner], ['App', x.app + ' ' + x.app_version], ['System', x.platform + ' ' + x.os_version], ['Battery', x.battery != null ? x.battery + '%' : ''], ['Free storage', x.storage_free_gb != null ? x.storage_free_gb + ' GB' : ''], ['Network', x.network], ['Last seen', ago(x.last_seen)]]),
-      h('div', {}, [h('div', { class: 'ph-label', style: 'margin-bottom:var(--sp-2)' }, 'Identifiers'), kvList([['Serial number', x.serial_number || 'not reported'], ['MAC address', x.mac_address || 'not reported']].concat(x.local_ip && x.ip_seen && x.local_ip !== x.ip_seen ? [['IP on its network', x.local_ip], ['IP the server sees', x.ip_seen]] : [['IP address', x.local_ip || x.ip_seen || 'not reported']]).concat([ ['Build number', x.build_number || 'not reported']]), true)]),
+      h('div', {}, [h('div', { class: 'ph-label', style: 'margin-bottom:var(--sp-2)' }, 'Identifiers'), kvList([['Device ID', x.android_id || 'not reported'], ['Serial number', x.serial_number || 'not reported'], ['MAC address', x.mac_address || 'not reported']].concat(x.local_ip && x.ip_seen && x.local_ip !== x.ip_seen ? [['IP on its network', x.local_ip], ['IP the server sees', x.ip_seen]] : [['IP address', x.local_ip || x.ip_seen || 'not reported']]).concat([ ['Build number', x.build_number || 'not reported']]), true)]),
       h('div', {}, [h('div', { class: 'ph-label', style: 'margin-bottom:var(--sp-2)' }, 'People who used this device'), x.users && x.users.length ? h('div', {}, x.users.map(function (u) {
         return h('div', { style: 'padding:var(--sp-3) 0;border-bottom:1px solid var(--hairline)' }, [
           h('div', { class: 'ph-flex ph-flex--between' }, [h('div', { class: 'ph-strong' }, u.name), h('span', { class: 'ph-muted', style: 'font-size:12px' }, u.version ? 'version ' + u.version : '')]),

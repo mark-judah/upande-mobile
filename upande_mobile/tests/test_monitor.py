@@ -533,3 +533,12 @@ class TestDeviceInfoOnRegister(unittest.TestCase):
 
 if __name__ == "__main__":
 	unittest.main()
+
+
+class TestAndroidId(unittest.TestCase):
+	def test_android_id_is_kept_when_it_looks_like_one(self):
+		self.assertEqual(mon.clean_device({"android_id": "A1B2C3D4E5F60718"})["android_id"], "a1b2c3d4e5f60718")
+
+	def test_anything_else_is_dropped(self):
+		for bad in ("", None, "unknown", "123", "not hex!!", "g" * 16):
+			self.assertNotIn("android_id", mon.clean_device({"android_id": bad}))

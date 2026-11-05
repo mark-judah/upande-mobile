@@ -21,6 +21,7 @@
   "local_ip",
   "mac_address",
   "serial_number",
+  "android_id",
   "is_physical_device",
   "versions_section",
   "os_version",
@@ -154,6 +155,13 @@
    "label": "Serial Number",
    "read_only": 1,
    "description": "Only when the phone can give it: Android 10+ and iOS hide it from apps. Managed handhelds can supply it."
+  },
+  {
+   "fieldname": "android_id",
+   "fieldtype": "Data",
+   "label": "Device ID",
+   "read_only": 1,
+   "description": "The Android ID the phone reports: stays the same across app updates and reinstalls, changes after a factory reset. Use it to tell phones apart and to link one to an asset."
   },
   {
    "fieldname": "is_physical_device",

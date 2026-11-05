@@ -544,7 +544,7 @@ def device_list(app=None, state=None, health=None, search=None):
 		flags = mon.health_flags(health_row, min_os)
 		if health and health not in flags:
 			continue
-		text = " ".join(str(x or "") for x in (r.user, r.full_name, r.device_brand, r.device_model, r.device_name, r.serial_number, r.mac_address, r.local_ip))
+		text = " ".join(str(x or "") for x in (r.user, r.full_name, r.device_brand, r.device_model, r.device_name, r.serial_number, r.mac_address, r.android_id, r.local_ip))
 		if term and term not in text.lower():
 			continue
 		item = {
@@ -565,6 +565,7 @@ def device_list(app=None, state=None, health=None, search=None):
 			"storage_free_gb": round(cint(m.storage_free_bytes) / 1024**3, 1) if cint(m.storage_total_bytes) else None,
 			"network": m.network_type or "",
 			"serial_number": r.serial_number or "",
+			"android_id": r.android_id or "",
 			"mac_address": r.mac_address or "",
 			"local_ip": r.local_ip or "",
 			"build_number": r.build_number or "",
