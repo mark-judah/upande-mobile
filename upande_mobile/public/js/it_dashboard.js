@@ -211,7 +211,7 @@
     if (c.key === 'updates') {
       var parts = [];
       if (d.forgot) parts.push(plural(d.forgot, 'person', 'people') + ' just need to reopen the app');
-      if (d.cant_update) parts.push(plural(d.cant_update, 'person', 'people') + ' need a new install');
+      if (d.cant_update) parts.push(plural(d.cant_update, 'person', 'people') + ' waiting for the new install');
       return ['People on an old version', parts.join(' · ') + (d.oldest_days ? ' · the release is ' + days(d.oldest_days) + ' old' : ''), 'Open the chase list'];
     }
     if (c.key === 'support') return ['Waiting for an answer', 'The longest wait is ' + plural(d.oldest_hours || 0, 'hour') + ' (' + (d.oldest_user || 'someone') + ')', 'Open the inbox'];
@@ -347,7 +347,7 @@
   }
 
   /* ---------- Updates ---------- */
-  var BUCKETS = [['', 'Needs chasing'], ['forgot', 'Pending update'], ['cant_update', 'Needs a new install'], ['away', 'Not seen lately'], ['current', 'Up to date']];
+  var BUCKETS = [['', 'Needs chasing'], ['forgot', 'Pending update'], ['cant_update', 'Pending install'], ['away', 'Not seen lately'], ['current', 'Up to date']];
   function updates(r) {
     var bucket = r.q.get('bucket') || '';
     var q = r.q.get('search') || '';
@@ -387,7 +387,7 @@
           h('td', {}, who(p.full_name, p.team ? p.team + ' · ' + p.user : p.user)),
           h('td', {}, p.app),
           h('td', {}, [p.installed || '—', ' → ', p.target || '—']),
-          h('td', {}, p.bucket === 'cant_update' ? badge('Needs new install', 'bad') : p.bucket === 'forgot' ? badge('Pending update', 'warn') : p.bucket === 'away' ? badge('Not seen lately') : badge('Up to date', 'good')),
+          h('td', {}, p.bucket === 'cant_update' ? badge('Pending install', 'bad') : p.bucket === 'forgot' ? badge('Pending update', 'warn') : p.bucket === 'away' ? badge('Not seen lately') : badge('Up to date', 'good')),
           h('td', { class: 'is-num' }, p.bucket === 'current' || p.bucket === 'away' ? '—' : days(p.released_days_ago)),
           h('td', {}, ago(p.last_seen)),
           h('td', {}, p.reminded ? (p.reminded === 1 ? 'Once' : p.reminded + ' times') + ' · ' + ago(p.last_reminded) : h('span', { class: 'ph-muted' }, 'Never')),
@@ -665,7 +665,7 @@
   }
 
   /* ---------- App store ---------- */
-  var BUCKET_BADGE = { current: ['Up to date', 'good'], forgot: ['Pending update', 'warn'], cant_update: ['Needs new install', 'bad'], away: ['Not seen lately', ''], unknown: ['Unknown', ''] };
+  var BUCKET_BADGE = { current: ['Up to date', 'good'], forgot: ['Pending update', 'warn'], cant_update: ['Pending install', 'bad'], away: ['Not seen lately', ''], unknown: ['Unknown', ''] };
   function openInstallers(a) {
     var body = h('div', {}, h('div', { class: 'ph-muted' }, 'Loading…'));
     drawer(a.app, 'Who has installed it', body);
