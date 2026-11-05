@@ -115,7 +115,7 @@ def reminder_allowed(last_at, now_dt, cooldown_hours=REMIND_COOLDOWN_HOURS):
 
 _GITHUB_URL = re.compile(r"https?://(?:[\w.-]+\.)?(?:github\.com|githubusercontent\.com)[^\s\"')<>]*", re.I)
 _REPO_PATH = re.compile(r"/repos/[\w.-]+/[\w.-]+", re.I)
-_REPO_SLUG = None
+_GITHUB_WORD = re.compile(r"[\w.+/-]*github[\w.+-]*", re.I)
 
 
 def scrub(text):
@@ -125,6 +125,7 @@ def scrub(text):
 		return text
 	out = _GITHUB_URL.sub("[update server]", text)
 	out = _REPO_PATH.sub("[update server]", out)
+	out = _GITHUB_WORD.sub("[update server]", out)
 	for repo in _repo_slugs():
 		out = re.sub(re.escape(repo), "[update server]", out, flags=re.I)
 	return out
@@ -659,6 +660,27 @@ def problem_people(name):
 		as_dict=True,
 	)
 	return {"rows": [{"user": r.user, "name": r.full_name or r.user, "times": cint(r.n), "last": str(r["last"])} for r in rows]}
+
+
+@frappe.whitelist(methods=["GET"])
+def problem_event(name):
+	"""The newest event of an issue (message, stack), for the developer details. System Managers only; GitHub
+	addresses inside what the phone reported are taken out."""
+	_require_it()
+	if not is_developer():
+		frappe.throw(_("Not permitted."), frappe.PermissionError)
+	res = mon.issue(name, events=1)
+	return {"latest": _scrubbed(res.get("latest"))}
+
+
+def _scrubbed(value):
+	if isinstance(value, str):
+		return scrub(value)
+	if isinstance(value, dict):
+		return {scrub(k) if isinstance(k, str) else k: _scrubbed(v) for k, v in value.items()}
+	if isinstance(value, (list, tuple)):
+		return [_scrubbed(v) for v in value]
+	return value
 
 
 @frappe.whitelist(methods=["POST"])

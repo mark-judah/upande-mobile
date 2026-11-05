@@ -109,3 +109,7 @@ class TestScrub(unittest.TestCase):
 			self.assertNotIn("github", out.lower())
 		self.assertEqual(it.scrub(None), None)
 		self.assertEqual(it.scrub("Network request failed"), "Network request failed")
+
+	def test_github_headers_are_removed(self):
+		out = it.scrub('{"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}')
+		self.assertNotIn("github", out.lower())

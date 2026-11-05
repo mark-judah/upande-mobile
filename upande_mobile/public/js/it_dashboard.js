@@ -543,7 +543,7 @@
       var kv = h('dl', { class: 'ph-kv' });
       [['Level', p.level], ['Issue id', p.name], ['Last event id', p.developer.last_event]].forEach(function (x) { kv.appendChild(h('dt', {}, x[0])); kv.appendChild(h('dd', { class: 'ph-mono' }, x[1] || '—')); });
       inner.appendChild(kv);
-      call('monitor.issue', { name: p.name, events: 1 }).then(function (res) {
+      call('itdesk.problem_event', { name: p.name }).then(function (res) {
         var ev = res.latest;
         if (ev && (ev.stack || ev.message)) inner.appendChild(h('pre', { class: 'itd-code' }, ev.stack || ev.message));
       }).catch(function () { /* the summary above is enough */ });
