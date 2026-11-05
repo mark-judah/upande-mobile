@@ -95,3 +95,17 @@ class TestOverviewHelpers(unittest.TestCase):
 
 if __name__ == "__main__":
 	unittest.main()
+
+
+class TestScrub(unittest.TestCase):
+	def test_github_addresses_are_removed(self):
+		for raw in (
+			"GET /repos/mark-judah/upande-production/releases → Network request failed",
+			"fetch https://api.github.com/repos/mark-judah/upande-production/releases?per_page=100 failed",
+			"see https://github.com/mark-judah/x/releases",
+		):
+			out = it.scrub(raw)
+			self.assertNotIn("mark-judah", out)
+			self.assertNotIn("github", out.lower())
+		self.assertEqual(it.scrub(None), None)
+		self.assertEqual(it.scrub("Network request failed"), "Network request failed")

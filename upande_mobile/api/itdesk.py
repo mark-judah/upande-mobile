@@ -11,6 +11,7 @@
 # Pure helpers (people, buckets, wait time, wording) are separate from the database code so they are unit tested.
 
 import json
+import re
 
 import frappe
 from frappe import _
@@ -112,13 +113,38 @@ def reminder_allowed(last_at, now_dt, cooldown_hours=REMIND_COOLDOWN_HOURS):
 	return not last_at or (get_datetime(now_dt) - get_datetime(last_at)).total_seconds() >= cooldown_hours * 3600
 
 
+_GITHUB_URL = re.compile(r"https?://(?:[\w.-]+\.)?(?:github\.com|githubusercontent\.com)[^\s\"')<>]*", re.I)
+_REPO_PATH = re.compile(r"/repos/[\w.-]+/[\w.-]+", re.I)
+_REPO_SLUG = None
+
+
+def scrub(text):
+	"""Text that came from a phone, with any GitHub address or repository name taken out. The repository is public
+	and not something the dashboard may show, even inside an error message an app reported."""
+	if not text or not isinstance(text, str):
+		return text
+	out = _GITHUB_URL.sub("[update server]", text)
+	out = _REPO_PATH.sub("[update server]", out)
+	for repo in _repo_slugs():
+		out = re.sub(re.escape(repo), "[update server]", out, flags=re.I)
+	return out
+
+
+def _repo_slugs():
+	try:
+		rows = frappe.get_all(MOBILE_APP, fields=["github_repo"], limit_page_length=0)
+	except Exception:
+		return []
+	return sorted({(r.github_repo or "").strip().strip("/") for r in rows if r.github_repo}, key=len, reverse=True)
+
+
 def problem_view(row, developer):
 	"""An issue as one row of the Crashlytics table. The stack trace and event ids stay behind `developer`."""
 	out = {
 		"name": row["name"],
 		"app": row.get("app"),
-		"title": row.get("title") or "",
-		"culprit": row.get("culprit") or "",
+		"title": scrub(row.get("title")) or "",
+		"culprit": scrub(row.get("culprit")) or "",
 		"kind": row.get("kind") or "error",
 		"level": row.get("level") or "",
 		"people": cint(row.get("users_affected")),
@@ -132,7 +158,7 @@ def problem_view(row, developer):
 		"fixed_in": row.get("resolved_in_version") or "",
 	}
 	if developer:
-		out["developer"] = {"last_event": row.get("last_event") or ""}
+		out["developer"] = {"last_event": scrub(row.get("last_event")) or ""}
 	return out
 
 
@@ -698,7 +724,7 @@ def _inbox_rows(app, status):
 					"waiting": waiting,
 					"waiting_hours": int((now_dt - get_datetime(since)).total_seconds() // 3600) if waiting and since else 0,
 					"last_activity": str((last or {}).get("creation") or i.creation),
-					"preview": (sup.plain_text(last.get("content")) if last else (sup.parse_issue_description(i.description)[0] or ""))[:120],
+					"preview": scrub((sup.plain_text(last.get("content")) if last else (sup.parse_issue_description(i.description)[0] or ""))[:120]),
 					"messages": len(cs) + 1,
 				}
 			)
@@ -718,7 +744,7 @@ def _inbox_rows(app, status):
 					"waiting": waiting,
 					"waiting_hours": int((now_dt - get_datetime(t.last_message_at)).total_seconds() // 3600) if waiting and t.last_message_at else 0,
 					"last_activity": str(t.last_message_at or ""),
-					"preview": t.last_preview or "",
+					"preview": scrub(t.last_preview) or "",
 					"messages": 0,
 				}
 			)
@@ -758,7 +784,7 @@ def conversation(id):
 			"person": head.user_full_name or head.user,
 			"user": head.user,
 			"email": frappe.db.get_value("User", head.user, "email") or head.user,
-			"messages": [{"id": m.name, "from_staff": bool(cint(m.from_staff)), "mine": m.sender == frappe.session.user, "by": names.get(m.sender) or m.sender or "", "text": m.text, "sent_at": str(m.sent_at)} for m in msgs],
+			"messages": [{"id": m.name, "from_staff": bool(cint(m.from_staff)), "mine": m.sender == frappe.session.user, "by": names.get(m.sender) or m.sender or "", "text": scrub(m.text), "sent_at": str(m.sent_at)} for m in msgs],
 			"statuses": [],
 		}
 	doc = frappe.get_doc(sup.ISSUE, id)
@@ -770,7 +796,7 @@ def conversation(id):
 	by_email = {u.email: u.full_name for u in frappe.get_all("User", filters={"email": ["in", [c.get("comment_email") for c in comments if c.get("comment_email")] or [""]]}, fields=["email", "full_name"])}
 	files = sup._files_for(sup.ISSUE, [doc.name])
 	me_email = frappe.db.get_value("User", frappe.session.user, "email") or frappe.session.user
-	messages = [{"id": doc.name, "from_staff": False, "mine": False, "by": names.get(doc.raised_by) or doc.raised_by, "text": text or subject, "sent_at": str(doc.creation), "image": files.get(doc.name)}]
+	messages = [{"id": doc.name, "from_staff": False, "mine": False, "by": names.get(doc.raised_by) or doc.raised_by, "text": scrub(text or subject), "sent_at": str(doc.creation), "image": files.get(doc.name)}]
 	for c in comments:
 		body = sup.plain_text(c.get("content"))
 		if not body:
@@ -778,7 +804,7 @@ def conversation(id):
 		own = sup.is_own_issue(c.get("comment_email"), doc.raised_by, doc.raised_by)
 		who = c.get("comment_email")
 		mine = bool(who) and who in (frappe.session.user, me_email)
-		messages.append({"id": c.get("name"), "from_staff": not own, "mine": mine, "by": names.get(who) or by_email.get(who) or who or "", "text": body, "sent_at": str(c.get("creation"))})
+		messages.append({"id": c.get("name"), "from_staff": not own, "mine": mine, "by": names.get(who) or by_email.get(who) or who or "", "text": scrub(body), "sent_at": str(c.get("creation"))})
 	device = diag.get("device") or {}
 	out = {
 		"id": doc.name,
