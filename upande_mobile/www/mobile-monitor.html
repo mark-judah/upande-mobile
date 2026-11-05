@@ -2,8 +2,17 @@
 {% block title %}IT dashboard{% endblock %}
 {% block page_content %}
 {% include "upande_mobile/templates/includes/shell_start.html" %}
+{% if no_access %}
+<div class="ph-empty" id="no-access" role="alert" style="max-width:560px;margin:12vh auto 0">
+  <div class="ph-empty__icon" style="color:var(--warn)"><svg class="ph-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></div>
+  <div class="ph-empty__title">You can’t open the IT dashboard</div>
+  <div class="ph-empty__text">The IT dashboard is only for the IT Team. You’re signed in as <b>{{ itd_user }}</b>, and that account doesn’t have the IT Team role profile.<br>If you need access, ask IT to add the <b>IT Team</b> role profile to your account, then reload this page.</div>
+  <div style="margin-top:var(--sp-5)"><a class="ph-btn ph-btn--primary" href="/app-store">Go to the App store</a></div>
+</div>
+{% else %}
 <div id="itd-boot" hidden data-csrf="{{ csrf_token }}" data-developer="{{ developer }}" data-it="{{ itd_is_it }}" data-users="{{ itd_users }}"></div>
 <div id="view" aria-live="polite"><p class="ph-muted">Loading&hellip;</p></div>
+{% endif %}
 {% include "upande_mobile/templates/includes/shell_end.html" %}
-<script src="/assets/upande_mobile/js/it_dashboard.js?v={{ itd_v }}"></script>
+{% if not no_access %}<script src="/assets/upande_mobile/js/it_dashboard.js?v={{ itd_v }}"></script>{% endif %}
 {% endblock %}

@@ -5,7 +5,7 @@
 # traces, install ids), this module answers an IT manager's: who is out of date and for how long, which
 # devices need a hand, which problems hurt people, who is waiting for an answer.
 #
-# Open to System Managers and to the "IT Support" role. Developer details (stack traces, event ids, runtime
+# Open to System Managers and to people on the "IT Team" role profile. Developer details (stack traces, event ids, runtime
 # and engine versions) stay behind System Manager: `is_developer` tells the page whether to show them.
 #
 # Pure helpers (people, buckets, wait time, wording) are separate from the database code so they are unit tested.
@@ -23,7 +23,6 @@ from upande_mobile.api import monitor as mon
 from upande_mobile.api import usermgmt
 from upande_mobile.api import support as sup
 
-IT_ROLE = "IT Support"
 REMINDER = "Mobile Reminder"
 INSTALL = "Mobile App Install"
 MOBILE_APP = "Mobile App"
@@ -41,11 +40,11 @@ BEHIND = ("behind_ota", "needs_apk")
 
 
 def can_use(roles=None):
-	roles_given = roles
-	roles = roles if roles is not None else frappe.get_roles()
-	if "System Manager" in roles or IT_ROLE in roles:
-		return True
-	return roles_given is None and usermgmt.is_it_team()
+	"""The IT dashboard is for the IT Team role profile and for System Managers. Given `roles` (tests), only the
+	System Manager part can be answered."""
+	if roles is not None:
+		return "System Manager" in roles
+	return "System Manager" in frappe.get_roles() or usermgmt.is_it_team()
 
 
 def is_developer(roles=None):
@@ -55,13 +54,8 @@ def is_developer(roles=None):
 
 def _require_it():
 	if not can_use():
-		frappe.throw(_("The IT dashboard is visible to IT Support and System Managers only."), frappe.PermissionError)
+		frappe.throw(_("The IT dashboard is for the IT Team and System Managers only."), frappe.PermissionError)
 
-
-def ensure_role():
-	"""Create the IT Support role (idempotent, run after migrate)."""
-	if not frappe.db.exists("Role", IT_ROLE):
-		frappe.get_doc({"doctype": "Role", "role_name": IT_ROLE, "desk_access": 1}).insert(ignore_permissions=True)
 
 # --------------------------------------------------------------------------- #
 # pure helpers

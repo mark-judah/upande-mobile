@@ -71,7 +71,7 @@ class TestWording(unittest.TestCase):
 class TestRoles(unittest.TestCase):
 	def test_access(self):
 		self.assertTrue(it.can_use(["System Manager"]))
-		self.assertTrue(it.can_use(["IT Support"]))
+		self.assertFalse(it.can_use(["IT Support"]))
 		self.assertFalse(it.can_use(["Employee"]))
 		self.assertTrue(it.is_developer(["System Manager"]))
 		self.assertFalse(it.is_developer(["IT Support"]))

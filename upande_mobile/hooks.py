@@ -18,4 +18,4 @@ scheduler_events = {
 doc_events = {"Comment": {"after_insert": "upande_mobile.push.on_comment"}}
 
 # Composite indexes the dashboard's filters rely on (idempotent).
-after_migrate = ["upande_mobile.indexes.ensure_indexes", "upande_mobile.api.itdesk.ensure_role"]
+after_migrate = ["upande_mobile.indexes.ensure_indexes"]

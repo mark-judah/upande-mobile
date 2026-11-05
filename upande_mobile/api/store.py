@@ -161,7 +161,7 @@ def installers(app=None):
 	from upande_mobile.api import itdesk
 
 	if not itdesk.can_use():
-		frappe.throw(_("Only IT Support and System Managers can see who installed an app."), frappe.PermissionError)
+		frappe.throw(_("Only the IT Team and System Managers can see who installed an app."), frappe.PermissionError)
 	if not frappe.db.exists(MOBILE_APP, app):
 		frappe.throw(_("Unknown app."), frappe.DoesNotExistError)
 	rows = itdesk.people(app)

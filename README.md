@@ -159,7 +159,7 @@ The hourly job (`upande_mobile.api.devices.refresh_latest`) reads each enabled a
 
 **`https://your.site/mobile-monitor`** is an IT dashboard for the person who looks after the apps: who is out of date, which devices need a hand, what is crashing and who is waiting for an answer. It is written in plain language; the developer view is folded away.
 
-- **Who can open it:** System Managers, the **IT Support** role (created on `bench migrate`) and anyone on the **IT Team** role profile. Developer details (stack traces, install ids, runtime, event ids, diagnostics) are shown to System Managers only. Signed-out visitors are sent to the login page and back. There is no Desk menu entry, so bookmark the address.
+- **Who can open it:** System Managers and anyone on the **IT Team** role profile (nothing to create or migrate). Everyone else who opens `/mobile-monitor` sees a page explaining that the dashboard is for the IT Team, with a link to the App store. Developer details (stack traces, install ids, runtime, event ids, diagnostics) are shown to System Managers only. Signed-out visitors are sent to the login page and back. There is no Desk menu entry, so bookmark the address.
 - **Before it works:** the page loads its CSS and JavaScript from `/assets/upande_mobile/` (run `bench build --app upande_mobile` once after installing), and an app must be registered.
 - **The app selector** at the top filters every screen to one app. Everything from a device is shown as plain text, never as HTML.
 
