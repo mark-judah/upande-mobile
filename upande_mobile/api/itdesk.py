@@ -1,7 +1,7 @@
 # Copyright (c) 2026, Upande and contributors
 # For license information, please see license.txt
 #
-# The IT dashboard's data (/mobile-monitor). Where `monitor` and `devices` answer developer questions (stack
+# The IT dashboard's data (/it-dashboard). Where `monitor` and `devices` answer developer questions (stack
 # traces, install ids), this module answers an IT manager's: who is out of date and for how long, which
 # devices need a hand, which problems hurt people, who is waiting for an answer.
 #

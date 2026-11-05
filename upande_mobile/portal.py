@@ -1,7 +1,7 @@
 # Copyright (c) 2026, Upande and contributors
 # For license information, please see license.txt
 #
-# What the two portal pages (/mobile-monitor and /app-store) share: the sign-in redirect, the sidebar and the
+# What the two portal pages (/it-dashboard and /app-store) share: the sign-in redirect, the sidebar and the
 # template context for the dashboard shell (templates/includes/shell_start.html).
 
 import os
@@ -29,18 +29,18 @@ ICONS = {
 }
 
 DASHBOARD = [
-	("overview", "Overview", "/mobile-monitor#/overview", "house"),
-	("updates", "Updates", "/mobile-monitor#/updates", "refresh"),
-	("devices", "Devices", "/mobile-monitor#/devices", "phone"),
-	("crashlytics", "Crashlytics", "/mobile-monitor#/crashlytics", "alert"),
-	("support", "Support", "/mobile-monitor#/support", "chat"),
-	("apps", "Apps", "/mobile-monitor#/apps", "grid"),
+	("overview", "Overview", "/it-dashboard#/overview", "house"),
+	("updates", "Updates", "/it-dashboard#/updates", "refresh"),
+	("devices", "Devices", "/it-dashboard#/devices", "phone"),
+	("crashlytics", "Crashlytics", "/it-dashboard#/crashlytics", "alert"),
+	("support", "Support", "/it-dashboard#/support", "chat"),
+	("apps", "Apps", "/it-dashboard#/apps", "grid"),
 ]
 USER_MANAGEMENT = [
-	("users", "User management", "/mobile-monitor#/users", "users"),
-	("roles", "Role management", "/mobile-monitor#/roles", "shield"),
-	("permissions", "Doctype permissions", "/mobile-monitor#/permissions", "lock"),
-	("userperms", "User permissions", "/mobile-monitor#/userperms", "filter"),
+	("users", "User management", "/it-dashboard#/users", "users"),
+	("roles", "Role management", "/it-dashboard#/roles", "shield"),
+	("permissions", "Doctype permissions", "/it-dashboard#/permissions", "lock"),
+	("userperms", "User permissions", "/it-dashboard#/userperms", "filter"),
 ]
 STORE = [("store", "App store", "/app-store", "download")]
 

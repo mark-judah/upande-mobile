@@ -21,7 +21,7 @@ Every feature name links to its section.
 
 | Feature | What it does |
 |---|---|
-| [Web portal](#the-web-portal) | An IT dashboard for updates, devices, problems and support chat, at `/mobile-monitor` |
+| [Web portal](#the-web-portal) | An IT dashboard for updates, devices, problems and support chat, at `/it-dashboard` |
 | [Crash and API monitoring](#monitoring) | Errors and failed requests with headers, payload and response, grouped into issues |
 | [Network and performance](#network-and-performance) | Wi-Fi, latency and how long each device's API calls take |
 
@@ -157,9 +157,9 @@ The hourly job (`upande_mobile.api.devices.refresh_latest`) reads each enabled a
 
 ## The web portal
 
-**`https://your.site/mobile-monitor`** is an IT dashboard for the person who looks after the apps: who is out of date, which devices need a hand, what is crashing and who is waiting for an answer. It is written in plain language; the developer view is folded away.
+**`https://your.site/it-dashboard`** is an IT dashboard for the person who looks after the apps: who is out of date, which devices need a hand, what is crashing and who is waiting for an answer. It is written in plain language; the developer view is folded away.
 
-- **Who can open it:** Only people on the **IT Team** role profile (nothing to create or migrate). A System Manager who is not on the profile is turned away too, and can add the profile to their own account in Desk. Everyone else who opens `/mobile-monitor` sees a page explaining that the dashboard is for the IT Team, with a link to the App store. Developer details (stack traces, install ids, runtime, event ids, diagnostics) are shown to System Managers only. Signed-out visitors are sent to the login page and back. There is no Desk menu entry, so bookmark the address.
+- **Who can open it:** Only people on the **IT Team** role profile (nothing to create or migrate). A System Manager who is not on the profile is turned away too, and can add the profile to their own account in Desk. Everyone else who opens `/it-dashboard` sees a page explaining that the dashboard is for the IT Team, with a link to the App store. Developer details (stack traces, install ids, runtime, event ids, diagnostics) are shown to System Managers only. Signed-out visitors are sent to the login page and back. There is no Desk menu entry, so bookmark the address.
 - **Before it works:** the page loads its CSS and JavaScript from `/assets/upande_mobile/` (run `bench build --app upande_mobile` once after installing), and an app must be registered.
 - **The app selector** at the top filters every screen to one app. Everything from a device is shown as plain text, never as HTML.
 
@@ -227,7 +227,7 @@ A daily job at 02:30 deletes events older than each app's Event Retention (defau
 
 ## Support
 
-Problem reports and chat from the app's **Help** card, in the portal under **Support** (`/mobile-monitor#/support`). They need the doctypes below, so run `bench --site your.site migrate` after installing or upgrading.
+Problem reports and chat from the app's **Help** card, in the portal under **Support** (`/it-dashboard#/support`). They need the doctypes below, so run `bench --site your.site migrate` after installing or upgrading.
 
 ### Problem reports
 
@@ -344,9 +344,9 @@ bench restart
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `/mobile-monitor` is a 404 | The app is not installed on this site, or the bench was not restarted | `bench --site your.site install-app upande_mobile`, then `bench restart` |
-| `/mobile-monitor` loads without styling or stays blank | The assets were not built | `bench build --app upande_mobile`, then restart |
-| `/mobile-monitor` says permission denied | The user is not a System Manager | Sign in as one |
+| `/it-dashboard` is a 404 | The app is not installed on this site, or the bench was not restarted | `bench --site your.site install-app upande_mobile`, then `bench restart` |
+| `/it-dashboard` loads without styling or stays blank | The assets were not built | `bench build --app upande_mobile`, then restart |
+| `/it-dashboard` says permission denied | The user is not a System Manager | Sign in as one |
 | Phones get no OTA (the manifest answers 204) | The app is not registered and enabled, has no OTA Base URL, or nothing is published for the phone's runtime | Run `register_app`; check the runtime of the latest release equals the app's `runtimeVersion`; read the Error Log for "Mobile OTA manifest" entries |
 | Devices show `unknown` | The app is disabled or not registered, or the hourly check has not run or found no manifest | Run `register_app`, then `bench --site your.site execute upande_mobile.api.devices.refresh_latest`, then read `Last Error` on the Mobile App |
 | Latest APK is empty | The repo name is wrong or private, or GitHub rate limited the server | Fix `github_repo`; set `upande_mobile_github_token` |
@@ -372,7 +372,7 @@ cd apps/upande_mobile
 ../../env/bin/python -W ignore -m unittest discover -s upande_mobile/tests -t .
 ```
 
-Layout: `upande_mobile/api/` (endpoints: `apps.py`, `devices.py`, `monitor.py`, `ota.py`, `support.py`, and `push.py` beside them), `github.py` (reading GitHub and release notes), `redaction.py`, `fingerprint.py`, `validation.py`, the nine doctypes in `upande_mobile/upande_mobile/doctype/` (Mobile App, Mobile App Install, Mobile App Install User, Mobile Issue, Mobile Event, Mobile Report, Mobile Chat Thread, Mobile Chat Message, Mobile Push Token), the dashboard page in `upande_mobile/www/mobile-monitor.html` and `upande_mobile/public/`.
+Layout: `upande_mobile/api/` (endpoints: `apps.py`, `devices.py`, `monitor.py`, `ota.py`, `support.py`, and `push.py` beside them), `github.py` (reading GitHub and release notes), `redaction.py`, `fingerprint.py`, `validation.py`, the nine doctypes in `upande_mobile/upande_mobile/doctype/` (Mobile App, Mobile App Install, Mobile App Install User, Mobile Issue, Mobile Event, Mobile Report, Mobile Chat Thread, Mobile Chat Message, Mobile Push Token), the dashboard page in `upande_mobile/www/it-dashboard.html` and `upande_mobile/public/`.
 
 ## License
 

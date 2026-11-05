@@ -1,4 +1,4 @@
-/* IT dashboard (/mobile-monitor) and app store (/app-store). Plain JS on the shared Upande v2 design (it-v2.css).
+/* IT dashboard (/it-dashboard) and app store (/app-store). Plain JS on the shared Upande v2 design (it-v2.css).
  * Everything from the server goes in through textContent, never innerHTML. */
 (function () {
   'use strict';

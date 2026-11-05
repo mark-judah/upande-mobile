@@ -1,7 +1,7 @@
 # Copyright (c) 2026, Upande and contributors
 # For license information, please see license.txt
 #
-# GitHub data for the per-app page of the mobile monitor: an app's recent releases
+# GitHub data for the per-app page of the IT dashboard: an app's recent releases
 # (their notes, and whether they carry an APK) and its latest GitHub Actions runs.
 #
 # Everything here runs on the SERVER, from the hourly check or an admin's refresh

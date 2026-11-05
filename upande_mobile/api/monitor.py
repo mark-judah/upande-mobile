@@ -462,7 +462,7 @@ def _min_os():
 
 def _manager():
 	if "System Manager" not in frappe.get_roles():
-		frappe.throw(_("The mobile monitor is visible to System Managers only."), frappe.PermissionError)
+		frappe.throw(_("The IT dashboard is visible to System Managers only."), frappe.PermissionError)
 
 
 def _json_field(value):
@@ -798,7 +798,7 @@ def ingest(payload=None):
 			accepted += 1
 		except Exception:
 			dropped += 1
-			frappe.log_error(title="Mobile monitor: event dropped")
+			frappe.log_error(title="IT dashboard: event dropped")
 	for fp, state in ctx["states"].items():
 		_flush_issue(fp, state)
 	_write_snapshots(ctx["snapshots"])
