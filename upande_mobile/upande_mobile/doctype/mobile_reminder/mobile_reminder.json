@@ -1,0 +1,122 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-11-05 09:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "user",
+  "app",
+  "kind",
+  "column_break_r",
+  "sent_by",
+  "sent_at",
+  "delivered",
+  "section_r",
+  "installed_version",
+  "target_version",
+  "message"
+ ],
+ "fields": [
+  {
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "options": "User",
+   "reqd": 1,
+   "search_index": 1,
+   "read_only": 1,
+   "label": "User"
+  },
+  {
+   "fieldname": "app",
+   "fieldtype": "Link",
+   "options": "Mobile App",
+   "reqd": 1,
+   "search_index": 1,
+   "read_only": 1,
+   "label": "App"
+  },
+  {
+   "fieldname": "kind",
+   "fieldtype": "Select",
+   "options": "update\nmanual\nauto",
+   "read_only": 1,
+   "default": "update",
+   "label": "Kind"
+  },
+  {
+   "fieldname": "column_break_r",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "sent_by",
+   "fieldtype": "Link",
+   "options": "User",
+   "read_only": 1,
+   "label": "Sent By"
+  },
+  {
+   "fieldname": "sent_at",
+   "fieldtype": "Datetime",
+   "read_only": 1,
+   "search_index": 1,
+   "label": "Sent At"
+  },
+  {
+   "fieldname": "delivered",
+   "fieldtype": "Int",
+   "read_only": 1,
+   "label": "Devices Reached"
+  },
+  {
+   "fieldname": "section_r",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "installed_version",
+   "fieldtype": "Data",
+   "read_only": 1,
+   "label": "Installed Version"
+  },
+  {
+   "fieldname": "target_version",
+   "fieldtype": "Data",
+   "read_only": 1,
+   "label": "Target Version"
+  },
+  {
+   "fieldname": "message",
+   "fieldtype": "Small Text",
+   "read_only": 1,
+   "label": "Message"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-05 09:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Upande Mobile",
+ "name": "Mobile Reminder",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 0,
+   "delete": 1,
+   "email": 0,
+   "export": 1,
+   "print": 0,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 0,
+   "write": 0
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "sent_at",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "user",
+ "track_changes": 0
+}

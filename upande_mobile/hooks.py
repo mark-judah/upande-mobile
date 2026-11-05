@@ -11,6 +11,8 @@ scheduler_events = {
 		"0 * * * *": ["upande_mobile.api.devices.refresh_latest"],
 		# Delete crash / API events past each app's retention (issues are kept).
 		"30 2 * * *": ["upande_mobile.api.monitor.purge_old_events"],
+		# Remind people still behind on apps that turned auto-remind on.
+		"0 8 * * *": ["upande_mobile.api.itdesk.auto_nudge"],
 	},
 }
 
@@ -18,4 +20,4 @@ scheduler_events = {
 doc_events = {"Comment": {"after_insert": "upande_mobile.push.on_comment"}}
 
 # Composite indexes the dashboard's filters rely on (idempotent).
-after_migrate = ["upande_mobile.indexes.ensure_indexes"]
+after_migrate = ["upande_mobile.indexes.ensure_indexes", "upande_mobile.api.itdesk.ensure_role"]

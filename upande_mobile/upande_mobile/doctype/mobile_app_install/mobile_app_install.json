@@ -48,7 +48,10 @@
   "snapshot_at",
   "device_snapshot",
   "users_section",
-  "users"
+  "users",
+  "it_section",
+  "device_state",
+  "it_notes"
  ],
  "fields": [
   {
@@ -301,6 +304,24 @@
    "fieldtype": "JSON",
    "label": "Device Snapshot",
    "read_only": 1
+  },
+  {
+   "fieldname": "it_section",
+   "fieldtype": "Section Break",
+   "label": "IT"
+  },
+  {
+   "fieldname": "device_state",
+   "fieldtype": "Select",
+   "options": "Active\nLost\nRetired",
+   "default": "Active",
+   "search_index": 1,
+   "label": "Device State"
+  },
+  {
+   "fieldname": "it_notes",
+   "fieldtype": "Small Text",
+   "label": "IT Notes"
   }
  ],
  "index_web_pages_for_search": 0,

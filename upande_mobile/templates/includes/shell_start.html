@@ -1,0 +1,42 @@
+{#- Dashboard shell (the Upande v2 layout): sidebar, topbar, page wrapper. Pair with shell_end.html. -#}
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/upande_mobile/css/it-v2.css?v={{ itd_v }}">
+<script>document.documentElement.classList.add('ph2-root');</script>
+<div class="ph2" id="ph2">
+  <script>try{if(localStorage.getItem('ph2SideCollapsed')==='1')document.getElementById('ph2').classList.add('is-collapsed')}catch(e){}</script>
+  <aside class="ph-side" aria-label="Navigation">
+    <div class="ph-side__head">
+      <a class="ph-side__brand" href="/mobile-monitor">
+        <img class="ph-side__logo" src="/assets/upande_mobile/images/upande-logo-v2.png" alt="Upande">
+        <div class="ph-side__name">{{ site_title }}<small>{{ 'IT dashboard' if itd_is_it else 'App store' }}</small></div>
+      </a>
+    </div>
+    <nav class="ph-side__nav" id="nav">
+      {%- for group, items in itd_nav %}
+      <div class="ph-side__group">{{ group }}</div>
+      {%- for key, label, href, ic in items %}
+      <a class="ph-side__item{% if key == itd_active %} is-on{% endif %}" href="{{ href }}" data-route="{{ key }}" title="{{ label }}"{% if key == itd_active %} aria-current="page"{% endif %}><svg class="ph-ic" viewBox="0 0 24 24" aria-hidden="true">{{ itd_icons[ic] | safe }}</svg><span>{{ label }}</span><span class="itd-count" id="count-{{ key }}" hidden></span></a>
+      {%- endfor %}
+      {%- endfor %}
+    </nav>
+    <div class="ph-side__foot">
+      <div class="ph-avatar">{{ (itd_user_name or '?')[:1] | upper }}</div>
+      <div class="ph-side__who"><b>{{ itd_user_name }}</b><small>{{ itd_user }}</small></div>
+    </div>
+  </aside>
+  <div class="ph-scrim" id="ph-scrim"></div>
+  <main class="ph-main" id="ph-main">
+    <div class="ph-topbar">
+      <button class="ph-iconbtn ph-iconbtn--flat ph-iconbtn--sm ph-menu-btn" id="ph-menu-btn" type="button" aria-label="Open navigation"><svg class="ph-ic" viewBox="0 0 24 24" aria-hidden="true">{{ itd_icons['menu'] | safe }}</svg></button>
+      <button class="ph-iconbtn ph-iconbtn--flat ph-iconbtn--sm ph-collapse-btn" id="ph-collapse" type="button" aria-label="Collapse sidebar" title="Collapse sidebar"><svg class="ph-ic" viewBox="0 0 24 24" aria-hidden="true">{{ itd_icons['sidebar'] | safe }}</svg></button>
+      <div class="ph-topbar__crumb">{{ 'IT' if itd_is_it else 'Upande' }}<span>/</span><b id="crumb">{{ itd_title }}</b></div>
+      <div class="ph-topbar__right">
+        <span class="ph-updated" id="ph-updated" hidden></span>
+        {%- if itd_is_it and itd_active != 'store' %}
+        <button class="ph-iconbtn ph-iconbtn--sm" id="ph-refresh" type="button" title="Refresh" aria-label="Refresh"><svg class="ph-ic" viewBox="0 0 24 24" aria-hidden="true">{{ itd_icons['refresh'] | safe }}</svg></button>
+        {%- endif %}
+      </div>
+    </div>
+    <div class="ph-page">

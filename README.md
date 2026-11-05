@@ -21,10 +21,9 @@ Every feature name links to its section.
 
 | Feature | What it does |
 |---|---|
-| [Web portal](#the-web-portal) | One place for issues, devices, apps and support, at `/mobile-monitor` |
+| [Web portal](#the-web-portal) | An IT dashboard for updates, devices, problems and support chat, at `/mobile-monitor` |
 | [Crash and API monitoring](#monitoring) | Errors and failed requests with headers, payload and response, grouped into issues |
 | [Network and performance](#network-and-performance) | Wi-Fi, latency and how long each device's API calls take |
-| [App page](#app-page) | Per app: current version, adoption, release notes and GitHub activity |
 
 **Support**
 
@@ -92,7 +91,7 @@ Open the **Mobile App** list (System Manager only) and create or edit a record:
 | OTA Base URL | Where the app's OTA files are published, for example `https://owner.github.io/my-app/ota`. See the rules below. |
 | Platform | `android`. |
 | Latest Version, Latest Runtime, Latest APK Version, Latest APK URL, Published At, Checked At, Last Error | Read only. Filled by the hourly check. |
-| GitHub Checked At, GitHub Error | Read only. When the repo's releases and workflow runs were last read, and why that failed, if it did. They feed the [App page](#app-page); a hidden field next to them caches the data. |
+| GitHub Checked At, GitHub Error | Read only. When the repo's releases and workflow runs were last read, and why that failed, if it did. They keep the GitHub data of the app's recent releases; a hidden field next to them caches it. |
 | Enable Monitoring | Accept crash and error reports from this app. Default on. |
 | Accept Reports Before Sign-in | Also accept reports from devices with no signed-in user, for example login failures. Default off. Rate limited by IP. |
 | Event Retention (Days) | Events older than this are deleted daily. Default 30, between 1 and 365. Issues are kept. |
@@ -140,7 +139,7 @@ A device reports a random install id and a hardware key. The server stores the h
 
 A same-account launch within 5 minutes only refreshes `last_seen`. A new version, a sign-in or a different account is always recorded.
 
-The hourly job (`upande_mobile.api.devices.refresh_latest`) reads each enabled app's newest OTA manifest and newest GitHub Release with an APK, stores them on the Mobile App, and re-rates every device. It also reads the app's recent releases and workflow runs for the [App page](#app-page). Run it now with `bench --site your.site execute upande_mobile.api.devices.refresh_latest`. Failures are kept in the record's `Last Error`.
+The hourly job (`upande_mobile.api.devices.refresh_latest`) reads each enabled app's newest OTA manifest and newest GitHub Release with an APK, stores them on the Mobile App, and re-rates every device. It also reads the app's recent releases and workflow runs. Run it now with `bench --site your.site execute upande_mobile.api.devices.refresh_latest`. Failures are kept in the record's `Last Error`.
 
 | Status | Meaning |
 |---|---|
@@ -158,21 +157,31 @@ The hourly job (`upande_mobile.api.devices.refresh_latest`) reads each enabled a
 
 ## The web portal
 
-**`https://your.site/mobile-monitor`**, for IT admins and developers.
+**`https://your.site/mobile-monitor`** is an IT dashboard for the person who looks after the apps: who is out of date, which devices need a hand, which problems hurt people and who is waiting for an answer. It is written in plain language; the developer view is folded away.
 
-- **Who can open it:** System Managers. Open the address in a browser while signed in to your Frappe site. If you are signed out you are sent to the login page and back; any other user gets a permission error. There is no Desk menu entry, so bookmark the address.
-- **Before it works:** run `bench build --app upande_mobile` once after installing (the page loads its CSS and JavaScript from `/assets/upande_mobile/`), and have an app registered and sending reports.
-- **The app selector** at the top filters every view to one app. Everything from a device is shown as plain text, never as HTML.
+- **Who can open it:** System Managers and the **IT Support** role (created on `bench migrate`; give it to your IT staff). Developer details (stack traces, install ids, runtime, event ids, diagnostics) are shown to System Managers only. Signed-out visitors are sent to the login page and back. There is no Desk menu entry, so bookmark the address.
+- **Before it works:** the page loads its CSS and JavaScript from `/assets/upande_mobile/` (run `bench build --app upande_mobile` once after installing), and an app must be registered.
+- **The app selector** at the top filters every screen to one app. Everything from a device is shown as plain text, never as HTML.
 
-| View | Shows |
+| Screen | Shows |
 |---|---|
-| Overview | Events per day, top issues, breakdown by app version, model and OS, fleet health counts |
-| Issues | Grouped problems. Filter by app, status, kind, level, version, and search |
-| Issue detail | Stack, request and response viewer with Copy as cURL, breadcrumbs, device and user panels, and Resolve or Ignore |
-| Devices | Health of every registered device, with filters for low battery, low storage, offline, old OS and old app, and a **Connection** column (Wi-Fi, latency, API response time) |
-| Device | One device's timeline: last known state, Wi-Fi and kit version, and its events |
-| App | One app's page: version, adoption, release notes, GitHub activity. See [App page](#app-page) |
-| Support | Problem reports and chat. See [Support](#support) |
+| Overview | Headline numbers (apps, people, adoption, devices active this week, open tickets, problems, reminders sent), attention cards that open their screen, a per-app table and devices by platform |
+| Updates | The chase list. One row per person and app: version they have and need, how long ago the release came out, last seen, team (from Employee, when present), how many reminders they had. Groups: forgot to update (reopening the app is enough), needs a new install (an APK), still within grace, not seen lately, up to date. Select people and press **Remind** to send a push notification |
+| Devices | Inventory with serial number, MAC address, device IP, the IP the server saw and build number as columns, plus owner, model, app, health, battery, storage and last seen. Open a row to mark the device Active, Lost or Retired and add a note. Lost and retired devices drop off the chase list |
+| Problems | Open problems grouped by how they hurt: stopping people from working, getting in the way, worth knowing. Who was affected, mark resolved, or accept as known |
+| Support | The inbox (full name first, then email), longest wait on top, with **chat**; the screenshot a person sent shows inside their first message, like a chat app: read the conversation and answer in the page. The answer is stored on the conversation (a Comment on the Issue, so Desk still shows it) and pushed to the person's phone, so nobody has to open the Issue to reply. Change the status from the same page |
+| Apps | One row per app: share of people on the current version, behind, away, problems, open tickets, and the app's **grace period** and **auto-remind** setting |
+
+### App store
+
+**`https://your.site/app-store`** lists every enabled app that has a published APK, for any signed-in user (the dashboard sidebar links to it). The page never shows the GitHub repository: **Download** goes through `upande_mobile.api.store.download`, which fetches the newest APK from GitHub (only github.com and GitHub's download hosts) into the site's private files on first use, serves it from there afterwards and deletes older copies. Public repositories only: a private repo's release link cannot be fetched this way.
+
+### Reminders
+
+- **Grace period** (Mobile App, default 3 days): after a release, people are not chased until it is this old.
+- **Remind** sends a push ("Version 2.1.0 is ready. Close and reopen the app to get it", or "needs a fresh install" when an APK is required). Someone reminded in the last 20 hours is skipped, and the page says who has not allowed notifications. Every reminder is logged in **Mobile Reminder** (who, when, from which version to which, who sent it) and shown on the chase list as "reminded twice".
+- **Auto-remind** (Mobile App, default 0 = off): a daily job at 08:00 reminds people still behind that many days after a release, at most 3 times and 3 days apart.
+- A device marked Lost or Retired is never chased.
 
 ## Monitoring
 
@@ -250,31 +259,6 @@ A reply is pushed to the person's phone the moment support comments.
 - Diagnostics pass the same device whitelist and redaction as crash reports; free text in the details is redacted for token-shaped text.
 - The portal shows reports to System Managers only. An Issue keeps the permissions your Issue doctype already has; a Mobile Report, a chat thread and its messages are readable by System Managers only.
 
-## App page
-
-**`https://your.site/mobile-monitor#/app/<app name>`** is one page per app, for developers: what is going on, which version is current, how many devices have it and what is new in it. Open it from the **App** link in the top bar, from the **Apps** card on the Overview, or from any app name shown in the Issues and Devices views. System Managers only.
-
-| Section | Shows |
-|---|---|
-| Header | The app's name, whether it is enabled and monitored, links to its GitHub repository, Releases, Actions and Pages, when the version check and the GitHub data were last read, and the error from either if there was one |
-| Version now | The newest published version, its runtime, the newest APK and when it was published, with a one-line summary such as `OTA 1.2.7 on runtime 1.2; newest APK 1.2.0` |
-| Adoption | Devices registered; devices and accounts on the latest version; how many need an APK, are behind on OTA or are dormant; devices by version and by runtime; and the devices that are not up to date yet, each linking to its timeline |
-| What's new | The notes of the GitHub release for the latest version (or of the newest release when there is none for it), marked OTA or APK, and the notes of the last ten releases |
-| What's going on | The last five GitHub Actions workflow runs (running, passed or failed), the app's open issues with the most events lately, events per day for 14 days, the top device models and OS versions, and fleet health (low battery, low storage, old OS, offline) |
-
-**Where the data comes from.** Adoption, issues, models and health come from the device register and the monitor data on your site. Releases and workflow runs come from GitHub, read by **your server**, never by the browser: the hourly job reads each enabled app's newest ten releases and five workflow runs from `api.github.com` and stores them on the Mobile App record (GitHub Checked At, GitHub Error and a hidden cache field). The **Refresh from GitHub** button (`refresh_app`) re-reads one app's OTA, APK and GitHub data now, once a minute per app.
-
-**What counts as a release.** Published releases only. Drafts, pre-releases and tags starting with `legacy` are skipped. A release with an `.apk` file attached is marked APK, any other OTA. Notes are cut at 8 KB.
-
-**Release notes are shown as text.** A small part of Markdown is understood: headings, bullet lists, `**bold**`, inline `code` and links that start with `http://` or `https://`. Everything else, HTML included, is displayed as plain text and never interpreted. Links open in a new tab without access to the page.
-
-**GitHub limits.**
-
-- Without a token GitHub allows 60 requests an hour per server address. An app uses up to three per hourly run (the APK lookup, the releases and the workflow runs). Set `upande_mobile_github_token` to raise the limit to 5000 an hour; a token that can only read public data is enough. For a private repository the token needs read access to its contents and to Actions.
-- Releases and runs are requested with ETags, so an unchanged list comes back as an empty `304` answer. A busy repository changes its releases list constantly (download counts change), so for those the full list is read each time.
-- When GitHub cannot be reached, answers with an error or says the limit is used up, the page keeps the last data it has and shows **GitHub unreachable (showing data from ...)** with the reason. The OTA and APK data are not affected by this.
-- A private repository, or one that does not exist, answers 404 and the page says so.
-
 ## Endpoints
 
 All paths are under `/api/method/`.
@@ -289,7 +273,7 @@ All paths are under `/api/method/`.
 | `upande_mobile.api.app_versions` | GET | signed-in user | Versions of the apps installed on this site |
 | `upande_mobile.api.monitor.ingest` | POST | signed-in user (guests only if the app allows it) | A batch of crash and API events |
 | `upande_mobile.api.monitor.overview`, `issues`, `issue`, `events`, `devices` | GET | System Manager | Dashboard data |
-| `upande_mobile.api.monitor.app_overview?app=<name>` | GET | System Manager | Everything the [App page](#app-page) shows, in one call |
+| `upande_mobile.api.monitor.app_overview?app=<name>` | GET | System Manager | One app's version, adoption, releases and activity, in one call |
 | `upande_mobile.api.monitor.refresh_app` (`app`) | POST | System Manager | Re-read one app's latest OTA, APK and GitHub data now. At most once a minute per app; inside that minute it answers `{refreshed: false, retry_in}` |
 | `upande_mobile.api.support.submit_report` | POST | signed-in user | "Report a problem": subject, details, a base64 JPEG `screenshot` (at most 1.5 MB), `diagnostics` JSON. 10 per hour per user. Creates an Issue, or a Mobile Report where the site has no Issue, and returns `{report, doctype}` |
 | `upande_mobile.api.support.threads` (`app`) | GET | signed-in user | The person's conversations with support (their Issues for the app) and the chat `mode` |
@@ -298,7 +282,9 @@ All paths are under `/api/method/`.
 | `upande_mobile.api.support.register_push` (`app`, `token`, `install_id`, `platform`) | POST | signed-in user | Offer this phone's Expo push token for support replies. 20 per hour |
 | `upande_mobile.api.support.unregister_push` (`token`) | POST | signed-in user | Forget the caller's own token |
 | `upande_mobile.api.support.chat` | GET / POST | signed-in user | The single-thread chat for sites without an Issue doctype. `GET` returns messages (and marks replies read), `?count_only=1` the unread count; `POST` sends `text` |
-| `upande_mobile.api.support.reports`, `report`, `set_report_status`, `chat_threads`, `chat_thread`, `chat_reply` | GET / POST | System Manager | The portal's Support page |
+| `upande_mobile.api.support.reports`, `report`, `set_report_status`, `chat_threads`, `chat_thread`, `chat_reply` | GET / POST | System Manager | Support data for Desk and integrations |
+| `upande_mobile.api.store.apps`, `download` | GET | any signed-in user | The app store |
+| `upande_mobile.api.itdesk.*` (`today`, `updates`, `remind`, `reminders`, `device_list`, `set_device`, `problems`, `inbox`, `conversation`, `send`, `apps`, `set_app_policy`) | GET / POST | System Manager or IT Support | The IT dashboard |
 | `upande_mobile.api.monitor.set_issue_status`, `purge_now` | POST | System Manager | Resolve or ignore an issue; delete expired events now |
 
 ## Site settings
@@ -344,8 +330,6 @@ bench restart
 | Phones get no OTA (the manifest answers 204) | The app is not registered and enabled, has no OTA Base URL, or nothing is published for the phone's runtime | Run `register_app`; check the runtime of the latest release equals the app's `runtimeVersion`; read the Error Log for "Mobile OTA manifest" entries |
 | Devices show `unknown` | The app is disabled or not registered, or the hourly check has not run or found no manifest | Run `register_app`, then `bench --site your.site execute upande_mobile.api.devices.refresh_latest`, then read `Last Error` on the Mobile App |
 | Latest APK is empty | The repo name is wrong or private, or GitHub rate limited the server | Fix `github_repo`; set `upande_mobile_github_token` |
-| The App page says "GitHub unreachable" or "rate limit reached" | The server could not read GitHub: no network, the 60-requests-an-hour limit without a token, or a private repo (GitHub answers 404) | The page keeps the last data. Set `upande_mobile_github_token`, check the repo name, then press Refresh from GitHub |
-| The App page shows "No releases yet" for a repo that has releases | Only published releases count: drafts, pre-releases and tags starting with `legacy` are skipped | Publish the release; the hourly check or Refresh from GitHub picks it up |
 | Refresh from GitHub shows a countdown | One refresh per app per minute | Wait for it to finish |
 | `register_app` says the host is not allowed | The OTA Base URL host is not `*.github.io` or `raw.githubusercontent.com` | Use a Pages URL, or add the host to `upande_mobile_ota_hosts` |
 | Reports are answered with `paused: true` | `monitoring_off`: Enable Monitoring is off. `unknown_app`: an invalid name, or 20 disabled auto-created apps already exist | Turn Enable Monitoring on; register the app or delete unused disabled ones |
