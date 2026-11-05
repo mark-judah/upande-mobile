@@ -58,13 +58,14 @@ class TestWording(unittest.TestCase):
 		self.assertEqual(it.days_between("2026-11-01 00:00:00", NOW), 4)
 		self.assertIsNone(it.days_between(None, NOW))
 
-	def test_problem_view_hides_developer_fields(self):
-		row = {"name": "x", "app": "A", "kind": "crash", "users_affected": 3, "title": "TypeError", "culprit": "f.js"}
+	def test_problem_view_keeps_event_ids_for_developers_only(self):
+		row = {"name": "x", "app": "A", "kind": "crash", "users_affected": 3, "title": "TypeError", "culprit": "f.js", "last_event": "e1"}
 		plain = it.problem_view(row, False)
 		self.assertNotIn("developer", plain)
-		self.assertEqual(plain["impact"], "blocking")
-		self.assertEqual(plain["what"], "The app closed unexpectedly")
-		self.assertEqual(it.problem_view(row, True)["developer"]["culprit"], "f.js")
+		self.assertEqual(plain["title"], "TypeError")
+		self.assertEqual(plain["kind"], "crash")
+		self.assertEqual(plain["people"], 3)
+		self.assertEqual(it.problem_view(row, True)["developer"]["last_event"], "e1")
 
 
 class TestRoles(unittest.TestCase):

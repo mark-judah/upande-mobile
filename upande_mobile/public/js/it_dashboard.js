@@ -145,7 +145,7 @@
   }
 
   /* ---------- routing ---------- */
-  var TITLES = { overview: 'Overview', updates: 'Updates', devices: 'Devices', problems: 'Problems', support: 'Support', apps: 'Apps' };
+  var TITLES = { overview: 'Overview', updates: 'Updates', devices: 'Devices', crashlytics: 'Crashlytics', support: 'Support', apps: 'Apps' };
   function route() {
     var p = (location.hash || '#/overview').slice(2).split('?');
     return { parts: p[0].split('/').map(decodeURIComponent), q: new URLSearchParams(p[1] || '') };
@@ -161,7 +161,7 @@
     return call('today').then(function (d) {
       var by = {};
       d.cards.forEach(function (c) { by[c.key] = c.count; });
-      ['updates', 'support', 'problems'].forEach(function (k) { setCount(k, by[k] || 0); });
+      ['updates', 'support', 'crashlytics'].forEach(function (k) { setCount(k, by[k] || 0); });
       return d;
     }).catch(function () { /* counts are a convenience */ });
   }
@@ -178,7 +178,7 @@
     var pg = document.querySelector('.ph-page');
     if (pg) pg.classList.toggle('ph-page--wide', key === 'support');
     root.classList.remove('is-drawer-open');
-    var screens = { overview: overview, updates: updates, devices: devices, problems: problems, support: support, apps: apps };
+    var screens = { overview: overview, updates: updates, devices: devices, crashlytics: crashlytics, support: support, apps: apps };
     Promise.resolve(screens[key](r)).then(markUpdated).catch(function (e) { mount(errState(e)); });
     if (key !== 'overview') refreshCounts();
   }
@@ -193,7 +193,7 @@
       return ['People on an old version', parts.join(' · ') + (d.oldest_days ? ' · the release is ' + days(d.oldest_days) + ' old' : ''), 'Open the chase list'];
     }
     if (c.key === 'support') return ['Waiting for an answer', 'The longest wait is ' + plural(d.oldest_hours || 0, 'hour') + ' (' + (d.oldest_user || 'someone') + ')', 'Open the inbox'];
-    if (c.key === 'problems') return ['Problems people are running into', plural(d.people || 0, 'person', 'people') + ' affected' + (d.blocking ? ' · ' + d.blocking + ' stop them working' : ''), 'See the problems'];
+    if (c.key === 'crashlytics') return ['Open issues in the last 2 days', plural(d.people || 0, 'person', 'people') + ' affected' + (d.crashes ? ' · ' + plural(d.crashes, 'crash', 'crashes') : ''), 'Open Crashlytics'];
     if (c.key === 'devices') {
       var bits = [];
       if (d.low_battery) bits.push(d.low_battery + ' low battery');
@@ -220,7 +220,7 @@
       var d = res[0], a = res[1].rows, s = d.stats;
       var by = {};
       d.cards.forEach(function (c) { by[c.key] = c.count; });
-      ['updates', 'support', 'problems'].forEach(function (k) { setCount(k, by[k] || 0); });
+      ['updates', 'support', 'crashlytics'].forEach(function (k) { setCount(k, by[k] || 0); });
       var scoped = appName ? a.filter(function (x) { return x.app === appName; }) : a;
       var tileList = d.cards.map(function (c) {
         var t = cardCopy(c);
@@ -253,12 +253,12 @@
         kpis([
           stat('Need to update', s.people_behind, s.people_away + ' not seen lately', { onClick: function () { go('updates'); }, dark: s.people_behind > 0 }),
           stat('Open tickets', s.tickets_open, s.tickets_waiting + ' waiting for an answer', { onClick: function () { go('support'); } }),
-          stat('Open problems', s.problems_open, s.people_hurt + ' people affected · ' + s.problems_blocking + ' blocking', { onClick: function () { go('problems'); } }),
+          stat('Open issues', s.problems_open, s.people_hurt + ' users affected · ' + plural(s.problems_crashes, 'crash', 'crashes'), { onClick: function () { go('crashlytics'); } }),
           stat('Reminders sent', s.reminders_7d, 'in the last 7 days')
         ]),
         d.cards.length ? card('Needs attention', '', h('div', { class: 'ph-tiles ph-tiles--sm' }, tileList)) : card('Needs attention', '', empty('All clear', 'Nobody is waiting, nothing is broken and everyone is up to date.')),
         h('div', { class: 'ph-row ph-row--2-1' }, [
-          card('Apps', plural(scoped.length, 'app'), scoped.length ? table([{ label: 'App' }, { label: 'On current version' }, { label: 'People', num: true }, { label: 'Behind', num: true }, { label: 'Problems', num: true }, { label: 'Tickets', num: true }], appRows) : empty('No apps yet'), true),
+          card('Apps', plural(scoped.length, 'app'), scoped.length ? table([{ label: 'App' }, { label: 'On current version' }, { label: 'People', num: true }, { label: 'Behind', num: true }, { label: 'Issues', num: true }, { label: 'Tickets', num: true }], appRows) : empty('No apps yet'), true),
           h('div', {}, [
             card('Devices by platform', s.devices_active + ' active', plat.length ? bars(plat, s.devices_active) : empty('No devices yet')),
             card('Device status', '', h('dl', { class: 'ph-kv' }, [['Active', s.devices_active], ['Lost', s.devices_lost], ['Retired', s.devices_retired], ['New this week', s.devices_new_7d]].reduce(function (acc, p) { acc.push(h('dt', {}, p[0]), h('dd', {}, String(p[1]))); return acc; }, [])))
@@ -390,41 +390,59 @@
     return box;
   }
 
-  /* ---------- Problems ---------- */
-  var GROUPS = [['blocking', 'Stopping people from working', 'The app closes or fails completely.'], ['slowing', 'Getting in the way', 'The app works, but something fails along the way.'], ['minor', 'Worth knowing', 'Warnings that do not stop anyone.']];
-  function problems(r) {
-    var status = r.q.get('status') || 'Open';
-    return call('problems', { app: appName, status: status }).then(function (d) {
-      var out = [
-        head('IT dashboard · Problems', 'What is going wrong', 'Ordered by how many people it hits. Developer details are folded away.'),
-        filters([pills([['Open', 'Open'], ['Resolved', 'Resolved'], ['Ignored', 'Known and accepted']], status, function (v) { go('problems?status=' + v); }), appSelect()]),
-        kpis([
-          { label: 'Stopping people', value: (d.groups.blocking || []).length, dark: (d.groups.blocking || []).length > 0 },
-          { label: 'Getting in the way', value: (d.groups.slowing || []).length },
-          { label: 'Worth knowing', value: (d.groups.minor || []).length }
-        ])
-      ];
-      GROUPS.forEach(function (g) {
-        var list = d.groups[g[0]] || [];
-        if (list.length) out.push(card(g[1], g[2], list.map(problemRow)));
+  /* ---------- Crashlytics ---------- */
+  var KIND_BADGE = { crash: 'bad', error: 'warn', api: 'signal', log: '' };
+  function crashlytics(r) {
+    var status = r.q.get('status') || 'Open', kind = r.q.get('kind') || '', q = r.q.get('search') || '';
+    return call('problems', { app: appName, status: status, kind: kind, search: q }).then(function (d) {
+      function nav(over) { var o = { status: status, kind: kind, search: q }; Object.keys(over).forEach(function (k) { o[k] = over[k]; }); go('crashlytics?' + qs(o)); }
+      var sum = function (key) { return d.rows.reduce(function (a, x) { return a + x[key]; }, 0); };
+      var rows = [];
+      d.rows.forEach(function (p) {
+        var detail = h('tr', { hidden: true }, h('td', { colspan: 9 }, issueDetail(p)));
+        function toggle() { detail.hidden = !detail.hidden; }
+        rows.push(h('tr', { class: 'is-link', tabindex: 0, onclick: toggle, onkeydown: function (e) { if (e.key === 'Enter') toggle(); } }, [
+          h('td', { class: 'is-wrap', style: 'min-width:280px;max-width:520px' }, [h('div', { class: 'ph-strong' }, p.title || '(no title)'), p.culprit ? h('div', { class: 'ph-mono ph-muted' }, p.culprit) : null]),
+          h('td', {}, badge(p.kind, KIND_BADGE[p.kind])),
+          h('td', {}, p.app),
+          h('td', { class: 'is-num' }, String(p.times)),
+          h('td', { class: 'is-num' }, String(p.people)),
+          h('td', { class: 'is-num' }, String(p.devices)),
+          h('td', {}, p.version ? (p.first_version && p.first_version !== p.version ? p.first_version + ' → ' + p.version : p.version) + (p.fixed_in ? ' · fixed in ' + p.fixed_in : '') : '—'),
+          h('td', {}, ago(p.last_seen)),
+          h('td', {}, badge(p.status, p.status === 'Open' ? 'warn' : p.status === 'Resolved' ? 'good' : ''))
+        ]), detail);
       });
-      if (!d.total) out.push(card('', '', empty('Nothing here', 'No problems in this group.')));
-      mount(out);
+      var cols = [{ label: 'Issue' }, { label: 'Kind' }, { label: 'App' }, { label: 'Events', num: true }, { label: 'Users', num: true }, { label: 'Devices', num: true }, { label: 'Versions' }, { label: 'Last seen' }, { label: 'Status' }];
+      var bk = d.by_kind || {};
+      mount([
+        head('IT dashboard · Crashlytics', 'Crashlytics', 'Crashes, errors and failed requests reported by your apps. Click an issue to see who hit it.'),
+        filters([
+          pills([['Open', 'Open', (d.by_status || {}).Open || 0], ['Resolved', 'Resolved', (d.by_status || {}).Resolved || 0], ['Ignored', 'Ignored', (d.by_status || {}).Ignored || 0]], status, function (v) { nav({ status: v }); }),
+          select([['', 'All kinds'], ['crash', 'Crashes (' + (bk.crash || 0) + ')'], ['error', 'Errors (' + (bk.error || 0) + ')'], ['api', 'API failures (' + (bk.api || 0) + ')'], ['log', 'Logs (' + (bk.log || 0) + ')']], kind, function (v) { nav({ kind: v }); }, 'Kind'),
+          appSelect(),
+          search('Search an error or file', q, function (v) { nav({ search: v }); })
+        ]),
+        kpis([
+          stat('Issues', d.total, status.toLowerCase()),
+          stat('Crashes', d.rows.filter(function (x) { return x.kind === 'crash'; }).length, 'the app closed', { dark: d.rows.some(function (x) { return x.kind === 'crash'; }) }),
+          stat('Events', sum('times'), 'reported in total'),
+          stat('Users affected', sum('people'), 'counted per issue')
+        ]),
+        card('', '', rows.length ? table(cols, rows) : empty('No issues', 'Nothing matches these filters.'), true)
+      ]);
     });
   }
-  function problemRow(p) {
-    var who_ = h('div', { class: 'ph-muted', style: 'font-size:12px;margin-top:var(--sp-2)' });
-    function setStatus(s) { call('set_problem_status', { name: p.name, status: s }, true).then(function () { toast('Marked ' + s.toLowerCase(), 'good'); render(); }).catch(fail); }
-    var box = h('div', { style: 'padding:var(--sp-4) 0;border-bottom:1px solid var(--hairline)' }, [
-      h('div', { class: 'ph-flex ph-flex--wrap' }, [h('div', { class: 'ph-strong ph-grow' }, p.what), badge(plural(p.people, 'person', 'people'), p.people ? (p.impact === 'blocking' ? 'bad' : 'warn') : ''), badge(p.app, 'outline')]),
-      h('div', { class: 'ph-muted', style: 'font-size:13px;margin-top:var(--sp-1)' }, 'Happened ' + plural(p.times, 'time') + ' on ' + plural(p.devices, 'device') + ' · last ' + ago(p.last_seen) + (p.version ? ' · on version ' + p.version : '') + (p.fixed_in ? ' · fixed in ' + p.fixed_in : '')),
+  function issueDetail(p) {
+    var who_ = h('div', { class: 'ph-muted', style: 'font-size:13px' }, 'Loading who was affected…');
+    call('problem_people', { name: p.name }).then(function (res) { who_.textContent = res.rows.length ? 'Affected: ' + res.rows.map(function (x) { return x.name + (x.times > 1 ? ' (' + x.times + '×)' : ''); }).join(', ') : 'No signed-in people recorded.'; }).catch(function () { who_.textContent = ''; });
+    function setStatus(st) { call('set_problem_status', { name: p.name, status: st }, true).then(function () { toast('Marked ' + st.toLowerCase(), 'good'); render(); }).catch(fail); }
+    var box = h('div', { class: 'ph-stack', style: 'padding:var(--sp-3) 0' }, [
+      h('div', { class: 'ph-muted', style: 'font-size:13px' }, 'First seen ' + ago(p.first_seen) + ' · last seen ' + ago(p.last_seen) + ' · ' + plural(p.times, 'event') + ' on ' + plural(p.devices, 'device')),
       who_,
-      h('div', { class: 'ph-flex ph-flex--wrap ph-mt' }, [
-        h('button', { class: 'ph-btn ph-btn--ghost ph-btn--sm', type: 'button', onclick: function () {
-          call('problem_people', { name: p.name }).then(function (res) { who_.textContent = res.rows.length ? 'Affected: ' + res.rows.map(function (x) { return x.name; }).join(', ') : 'No signed-in people recorded.'; }).catch(fail);
-        } }, 'Who was affected'),
-        p.status === 'Open' ? h('button', { class: 'ph-btn ph-btn--ghost ph-btn--sm', type: 'button', onclick: function () { setStatus('Resolved'); } }, 'Mark resolved') : h('button', { class: 'ph-btn ph-btn--ghost ph-btn--sm', type: 'button', onclick: function () { setStatus('Open'); } }, 'Reopen'),
-        p.status === 'Open' ? h('button', { class: 'ph-btn ph-btn--ghost ph-btn--sm', type: 'button', onclick: function () { setStatus('Ignored'); } }, 'Known, accept it') : null
+      h('div', { class: 'ph-flex ph-flex--wrap' }, [
+        p.status === 'Open' ? h('button', { class: 'ph-btn ph-btn--primary ph-btn--sm', type: 'button', onclick: function () { setStatus('Resolved'); } }, 'Mark resolved') : h('button', { class: 'ph-btn ph-btn--ghost ph-btn--sm', type: 'button', onclick: function () { setStatus('Open'); } }, 'Reopen'),
+        p.status === 'Open' ? h('button', { class: 'ph-btn ph-btn--ghost ph-btn--sm', type: 'button', onclick: function () { setStatus('Ignored'); } }, 'Ignore') : null
       ])
     ]);
     if (p.developer) box.appendChild(problemDev(p));
@@ -438,7 +456,7 @@
       loaded = true;
       clear(inner);
       var kv = h('dl', { class: 'ph-kv' });
-      [['Title', p.developer.title], ['Where', p.developer.culprit], ['Kind', p.developer.kind + ' / ' + p.developer.level], ['Issue id', p.name], ['Last event id', p.developer.last_event]].forEach(function (x) { kv.appendChild(h('dt', {}, x[0])); kv.appendChild(h('dd', { class: 'ph-mono' }, x[1] || '—')); });
+      [['Level', p.level], ['Issue id', p.name], ['Last event id', p.developer.last_event]].forEach(function (x) { kv.appendChild(h('dt', {}, x[0])); kv.appendChild(h('dd', { class: 'ph-mono' }, x[1] || '—')); });
       inner.appendChild(kv);
       call('monitor.issue', { name: p.name, events: 1 }).then(function (res) {
         var ev = res.latest;
@@ -549,13 +567,13 @@
           h('td', { class: 'is-num' }, String(a.people)),
           h('td', { class: 'is-num' }, a.behind ? badge(String(a.behind), 'warn') : '0'),
           h('td', { class: 'is-num' }, String(a.away)),
-          h('td', { class: 'is-num' }, a.problems ? badge(plural(a.problems, 'problem') + ' · ' + a.people_hurt + ' hit', 'bad') : '0'),
+          h('td', { class: 'is-num' }, a.problems ? badge(plural(a.problems, 'issue') + ' · ' + a.people_hurt + ' users', 'bad') : '0'),
           h('td', { class: 'is-num' }, String(a.open_tickets)),
           h('td', { style: 'width:90px' }, nudge),
           h('td', {}, h('button', { class: 'ph-btn ph-btn--ghost ph-btn--sm', type: 'button', onclick: function () { call('set_app_policy', { app: a.app, nudge_after_days: nudge.value }, true).then(function () { toast('Saved ' + a.app, 'good'); }).catch(fail); } }, 'Save'))
         ]);
       });
-      var cols = [{ label: 'App' }, { label: 'On current version' }, { label: 'People', num: true }, { label: 'Behind', num: true }, { label: 'Away', num: true }, { label: 'Problems', num: true }, { label: 'Open tickets', num: true }, { label: 'Auto-remind (days)' }, { label: '' }];
+      var cols = [{ label: 'App' }, { label: 'On current version' }, { label: 'People', num: true }, { label: 'Behind', num: true }, { label: 'Away', num: true }, { label: 'Issues', num: true }, { label: 'Open tickets', num: true }, { label: 'Auto-remind (days)' }, { label: '' }];
       mount([
         head('IT dashboard · Apps', 'Your apps', 'Adoption is the share of people on the current version. Auto-remind sends a push to people still behind that many days after a release (0 turns it off).'),
         kpis([{ label: 'Apps', value: d.rows.length }, { label: 'People', value: tot.people }, { label: 'Behind', value: tot.behind }, { label: 'Open tickets', value: tot.tickets }]),

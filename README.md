@@ -157,7 +157,7 @@ The hourly job (`upande_mobile.api.devices.refresh_latest`) reads each enabled a
 
 ## The web portal
 
-**`https://your.site/mobile-monitor`** is an IT dashboard for the person who looks after the apps: who is out of date, which devices need a hand, which problems hurt people and who is waiting for an answer. It is written in plain language; the developer view is folded away.
+**`https://your.site/mobile-monitor`** is an IT dashboard for the person who looks after the apps: who is out of date, which devices need a hand, what is crashing and who is waiting for an answer. It is written in plain language; the developer view is folded away.
 
 - **Who can open it:** System Managers and the **IT Support** role (created on `bench migrate`; give it to your IT staff). Developer details (stack traces, install ids, runtime, event ids, diagnostics) are shown to System Managers only. Signed-out visitors are sent to the login page and back. There is no Desk menu entry, so bookmark the address.
 - **Before it works:** the page loads its CSS and JavaScript from `/assets/upande_mobile/` (run `bench build --app upande_mobile` once after installing), and an app must be registered.
@@ -168,7 +168,7 @@ The hourly job (`upande_mobile.api.devices.refresh_latest`) reads each enabled a
 | Overview | Headline numbers (apps, people, adoption, devices active this week, open tickets, problems, reminders sent), attention cards that open their screen, a per-app table and devices by platform |
 | Updates | The chase list. One row per person and app: version they have and need, how long ago the release came out, last seen, team (from Employee, when present), how many reminders they had. Groups: forgot to update (reopening the app is enough), needs a new install (an APK), not seen lately, up to date. Select people and press **Remind** to send a push notification |
 | Devices | Inventory with serial number, MAC address, device IP, the IP the server saw and build number as columns, plus owner, model, app, health, battery, storage and last seen. Open a row to mark the device Active, Lost or Retired and add a note. Lost and retired devices drop off the chase list |
-| Problems | Open problems grouped by how they hurt: stopping people from working, getting in the way, worth knowing. Who was affected, mark resolved, or accept as known |
+| Crashlytics | The issues the apps reported (crashes, errors, API failures, logs), most users affected first: title, file, kind, events, users, devices, versions, last seen, status. Filter by status, kind, app and search; open an issue to see who hit it and mark it resolved or ignored. Stack traces and event ids sit in a folded Developer details panel (System Managers) |
 | Support | The inbox (full name first, then email), longest wait on top, with **chat**; the screenshot a person sent shows inside their first message, like a chat app: read the conversation and answer in the page. The answer is stored on the conversation (a Comment on the Issue, so Desk still shows it) and pushed to the person's phone, so nobody has to open the Issue to reply. Change the status from the same page |
 | Apps | One row per app: share of people on the current version, behind, away, problems, open tickets, and the app's **auto-remind** setting |
 

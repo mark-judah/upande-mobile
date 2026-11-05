@@ -28,7 +28,7 @@ DASHBOARD = [
 	("overview", "Overview", "/mobile-monitor#/overview", "house"),
 	("updates", "Updates", "/mobile-monitor#/updates", "refresh"),
 	("devices", "Devices", "/mobile-monitor#/devices", "phone"),
-	("problems", "Problems", "/mobile-monitor#/problems", "alert"),
+	("crashlytics", "Crashlytics", "/mobile-monitor#/crashlytics", "alert"),
 	("support", "Support", "/mobile-monitor#/support", "chat"),
 	("apps", "Apps", "/mobile-monitor#/apps", "grid"),
 ]

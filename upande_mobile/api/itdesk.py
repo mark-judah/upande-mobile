@@ -34,15 +34,6 @@ DEVICE_STATES = ("Active", "Lost", "Retired")
 PROBLEM_STATUSES = ("Open", "Resolved", "Ignored")
 BEHIND = ("behind_ota", "needs_apk")
 
-PROBLEM_WORDS = {
-	"crash": "The app closed unexpectedly",
-	"error": "Something went wrong inside the app",
-	"api": "The app could not reach the server",
-	"log": "A warning the app recorded",
-}
-# How much a kind hurts the person using the app.
-IMPACT = {"crash": "blocking", "error": "slowing", "api": "slowing", "log": "minor"}
-
 
 # --------------------------------------------------------------------------- #
 # access
@@ -124,13 +115,14 @@ def reminder_allowed(last_at, now_dt, cooldown_hours=REMIND_COOLDOWN_HOURS):
 
 
 def problem_view(row, developer):
-	"""An issue row in the words an IT manager reads; developer-only fields only for developers."""
-	kind = row.get("kind") or "error"
+	"""An issue as one row of the Crashlytics table. The stack trace and event ids stay behind `developer`."""
 	out = {
 		"name": row["name"],
 		"app": row.get("app"),
-		"what": PROBLEM_WORDS.get(kind, PROBLEM_WORDS["error"]),
-		"impact": IMPACT.get(kind, "slowing"),
+		"title": row.get("title") or "",
+		"culprit": row.get("culprit") or "",
+		"kind": row.get("kind") or "error",
+		"level": row.get("level") or "",
 		"people": cint(row.get("users_affected")),
 		"devices": cint(row.get("devices_affected")),
 		"times": cint(row.get("event_count")),
@@ -138,10 +130,11 @@ def problem_view(row, developer):
 		"first_seen": str(row.get("first_seen") or ""),
 		"status": row.get("status"),
 		"version": row.get("last_version") or "",
+		"first_version": row.get("first_version") or "",
 		"fixed_in": row.get("resolved_in_version") or "",
 	}
 	if developer:
-		out["developer"] = {"title": row.get("title") or "", "culprit": row.get("culprit") or "", "kind": kind, "level": row.get("level") or "", "last_event": row.get("last_event") or ""}
+		out["developer"] = {"last_event": row.get("last_event") or ""}
 	return out
 
 
@@ -372,7 +365,7 @@ def today():
 	problems = [p for p in _problem_rows(None, "Open") if p["people"] > 0 and days_between(p["last_seen"], now_datetime()) is not None and days_between(p["last_seen"], now_datetime()) <= 2]
 	if problems:
 		hurt = sum(p["people"] for p in problems)
-		cards.append({"key": "problems", "count": len(problems), "route": "problems", "severity": "high" if any(p["impact"] == "blocking" for p in problems) else "medium", "detail": {"people": hurt, "blocking": sum(1 for p in problems if p["impact"] == "blocking")}})
+		cards.append({"key": "crashlytics", "count": len(problems), "route": "crashlytics", "severity": "high" if any(p["kind"] == "crash" for p in problems) else "medium", "detail": {"people": hurt, "crashes": sum(1 for p in problems if p["kind"] == "crash")}})
 	health = mon._health_counts(None)
 	device_issues = {k: health.get(k, 0) for k in ("low_battery", "low_storage", "offline", "outdated_os")}
 	if any(device_issues.values()):
@@ -424,7 +417,7 @@ def _overview_stats(everyone, convo, open_problems):
 		"tickets_waiting": sum(1 for c in open_convo if c["waiting"]),
 		"tickets_total": len(convo),
 		"problems_open": len(open_problems),
-		"problems_blocking": sum(1 for p in open_problems if p["impact"] == "blocking"),
+		"problems_crashes": sum(1 for p in open_problems if p["kind"] == "crash"),
 		"people_hurt": sum(p["people"] for p in open_problems),
 		"reminders_7d": frappe.db.count(REMINDER, {"sent_at": [">=", week]}),
 	}
@@ -566,16 +559,20 @@ def set_device(id, state=None, notes=None):
 # --------------------------------------------------------------------------- #
 
 
-def _problem_rows(app, status):
+def _problem_rows(app, status, kind=None, search=None):
 	filters = {}
 	if app:
 		filters["app"] = app
 	if status:
 		filters["status"] = status
+	if kind in mon.KINDS:
+		filters["kind"] = kind
+	or_filters = [["title", "like", f"%{search}%"], ["culprit", "like", f"%{search}%"]] if search else None
 	rows = frappe.get_all(
 		mon.ISSUE,
 		filters=filters,
-		fields=["name", "title", "culprit", "app", "kind", "level", "status", "event_count", "users_affected", "devices_affected", "first_seen", "last_seen", "last_version", "resolved_in_version", "last_event"],
+		or_filters=or_filters,
+		fields=["name", "title", "culprit", "app", "kind", "level", "status", "event_count", "users_affected", "devices_affected", "first_seen", "last_seen", "first_version", "last_version", "resolved_in_version", "last_event"],
 		order_by="users_affected desc, last_seen desc",
 		limit_page_length=MAX_ROWS,
 	)
@@ -584,14 +581,21 @@ def _problem_rows(app, status):
 
 
 @frappe.whitelist(methods=["GET"])
-def problems(app=None, status="Open"):
-	"""Problems grouped by how much they hurt: blocking first, then slowing people down, then minor."""
+def problems(app=None, status="Open", kind=None, search=None):
+	"""The Crashlytics list: the issues the apps reported, most people affected first. `counts` gives the number of
+	issues per status and per kind (for the chosen status) so the page can label its filters."""
 	_require_it()
-	rows = _problem_rows(mon._text(app) or None, status if status in PROBLEM_STATUSES else None)
-	groups = {"blocking": [], "slowing": [], "minor": []}
-	for r in rows:
-		groups.setdefault(r["impact"], []).append(r)
-	return {"groups": groups, "total": len(rows), "developer": is_developer()}
+	app = mon._text(app) or None
+	status = status if status in PROBLEM_STATUSES else None
+	term = mon._text(search)[:80] or None
+	rows = _problem_rows(app, status, mon._text(kind) or None, term)
+	by_status = {}
+	for r in _problem_rows(app, None, mon._text(kind) or None, term):
+		by_status[r["status"]] = by_status.get(r["status"], 0) + 1
+	by_kind = {}
+	for r in _problem_rows(app, status, None, term):
+		by_kind[r["kind"]] = by_kind.get(r["kind"], 0) + 1
+	return {"rows": rows, "total": len(rows), "by_status": by_status, "by_kind": by_kind, "developer": is_developer()}
 
 
 @frappe.whitelist(methods=["GET"])
