@@ -5,7 +5,7 @@
 # traces, install ids), this module answers an IT manager's: who is out of date and for how long, which
 # devices need a hand, which problems hurt people, who is waiting for an answer.
 #
-# Open to System Managers and to people on the "IT Team" role profile. Developer details (stack traces, event ids, runtime
+# Open to people on the "IT Team" role profile only. Developer details (stack traces, event ids, runtime
 # and engine versions) stay behind System Manager: `is_developer` tells the page whether to show them.
 #
 # Pure helpers (people, buckets, wait time, wording) are separate from the database code so they are unit tested.
@@ -39,12 +39,10 @@ BEHIND = ("behind_ota", "needs_apk")
 # --------------------------------------------------------------------------- #
 
 
-def can_use(roles=None):
-	"""The IT dashboard is for the IT Team role profile and for System Managers. Given `roles` (tests), only the
-	System Manager part can be answered."""
-	if roles is not None:
-		return "System Manager" in roles
-	return "System Manager" in frappe.get_roles() or usermgmt.is_it_team()
+def can_use():
+	"""The IT dashboard is for people on the IT Team role profile, and nobody else: not even a System Manager,
+	unless they are on the profile too (Administrator is the one exception, so nobody can be locked out)."""
+	return usermgmt.is_it_team()
 
 
 def is_developer(roles=None):
@@ -54,7 +52,7 @@ def is_developer(roles=None):
 
 def _require_it():
 	if not can_use():
-		frappe.throw(_("The IT dashboard is for the IT Team and System Managers only."), frappe.PermissionError)
+		frappe.throw(_("The IT dashboard is for the IT Team only."), frappe.PermissionError)
 
 
 # --------------------------------------------------------------------------- #

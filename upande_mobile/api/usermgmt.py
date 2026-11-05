@@ -10,7 +10,7 @@
 # and every change goes through this module, which checks the caller itself and then saves with
 # `ignore_permissions`. The guard rails below are what make that safe:
 #
-#   * Access is System Manager or the "IT Team" role profile, nothing else.
+#   * Access is the "IT Team" role profile, nothing else (a System Manager without it is turned away too).
 #   * Roles that open code or run the system (System Manager, Script Manager, Administrator ...) can never be
 #     granted from here, and a role profile that contains one cannot be assigned from here either (a profile is
 #     only a bundle of roles, so assigning it would grant them).
@@ -79,16 +79,16 @@ def split_name(full_name):
 
 
 def is_it_team(user=None):
-	"""Whether the person has the IT Team role profile. Access follows the profile, so there is no role to create or
-	hand out: add someone to IT Team in Desk and they can manage users."""
+	"""Whether the person has the IT Team role profile (Administrator always counts). Access follows the profile,
+	so there is no role to create or hand out: add someone to IT Team in Desk and they can manage users."""
 	user = user or frappe.session.user
+	if user == "Administrator":
+		return True
 	return bool(frappe.db.exists("User Role Profile", {"parenttype": "User", "parent": user, "role_profile": TEAM_PROFILE}))
 
 
-def can_manage(roles=None):
-	if roles is not None:
-		return "System Manager" in roles
-	return "System Manager" in frappe.get_roles() or is_it_team()
+def can_manage():
+	return is_it_team()
 
 
 def _is_sm():
@@ -97,7 +97,7 @@ def _is_sm():
 
 def _require_admin():
 	if not can_manage():
-		frappe.throw(_("User management is for the IT Team and System Managers only."), frappe.PermissionError)
+		frappe.throw(_("User management is for the IT Team only."), frappe.PermissionError)
 
 
 # --------------------------------------------------------------------------- #

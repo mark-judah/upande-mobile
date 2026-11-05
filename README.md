@@ -159,7 +159,7 @@ The hourly job (`upande_mobile.api.devices.refresh_latest`) reads each enabled a
 
 **`https://your.site/mobile-monitor`** is an IT dashboard for the person who looks after the apps: who is out of date, which devices need a hand, what is crashing and who is waiting for an answer. It is written in plain language; the developer view is folded away.
 
-- **Who can open it:** System Managers and anyone on the **IT Team** role profile (nothing to create or migrate). Everyone else who opens `/mobile-monitor` sees a page explaining that the dashboard is for the IT Team, with a link to the App store. Developer details (stack traces, install ids, runtime, event ids, diagnostics) are shown to System Managers only. Signed-out visitors are sent to the login page and back. There is no Desk menu entry, so bookmark the address.
+- **Who can open it:** Only people on the **IT Team** role profile (nothing to create or migrate). A System Manager who is not on the profile is turned away too, and can add the profile to their own account in Desk. Everyone else who opens `/mobile-monitor` sees a page explaining that the dashboard is for the IT Team, with a link to the App store. Developer details (stack traces, install ids, runtime, event ids, diagnostics) are shown to System Managers only. Signed-out visitors are sent to the login page and back. There is no Desk menu entry, so bookmark the address.
 - **Before it works:** the page loads its CSS and JavaScript from `/assets/upande_mobile/` (run `bench build --app upande_mobile` once after installing), and an app must be registered.
 - **The app selector** at the top filters every screen to one app. Everything from a device is shown as plain text, never as HTML.
 
@@ -293,8 +293,8 @@ All paths are under `/api/method/`.
 | `upande_mobile.api.support.chat` | GET / POST | signed-in user | The single-thread chat for sites without an Issue doctype. `GET` returns messages (and marks replies read), `?count_only=1` the unread count; `POST` sends `text` |
 | `upande_mobile.api.support.reports`, `report`, `set_report_status`, `chat_threads`, `chat_thread`, `chat_reply` | GET / POST | System Manager | Support data for Desk and integrations |
 | `upande_mobile.api.store.apps`, `download`, `check_updates` (POST), `installers` (IT only) | GET | any signed-in user | The app store |
-| `upande_mobile.api.usermgmt.*` (`meta`, `users`, `detail`, `create`, `update`, `add_role_profile`, `remove_role_profile`, `reset_password`, `delete`) | GET / POST | System Manager or the IT Team role profile | User management |
-| `upande_mobile.api.itdesk.*` (`today`, `updates`, `remind`, `reminders`, `device_list`, `set_device`, `problems`, `inbox`, `conversation`, `send`, `apps`) | GET / POST | System Manager or IT Support | The IT dashboard |
+| `upande_mobile.api.usermgmt.*` (`meta`, `users`, `detail`, `create`, `update`, `add_role_profile`, `remove_role_profile`, `reset_password`, `delete`) | GET / POST | IT Team role profile | User management |
+| `upande_mobile.api.itdesk.*` (`today`, `updates`, `remind`, `reminders`, `device_list`, `set_device`, `problems`, `inbox`, `conversation`, `send`, `apps`) | GET / POST | IT Team role profile | The IT dashboard |
 | `upande_mobile.api.monitor.set_issue_status`, `purge_now` | POST | System Manager | Resolve or ignore an issue; delete expired events now |
 
 ## Site settings
