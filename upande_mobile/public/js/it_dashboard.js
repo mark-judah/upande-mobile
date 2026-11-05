@@ -134,6 +134,26 @@
   function errState(e) {
     return h('div', { class: 'ph-empty ph-empty--error' }, [h('div', { class: 'ph-empty__icon' }, icon(['M12 8v5', 'M12 16h.01'])), h('div', { class: 'ph-empty__title' }, 'Couldn’t load this'), h('div', { class: 'ph-empty__text' }, e.message || String(e))]);
   }
+  var openDrawer = null;
+  function drawer(title, sub, body) {
+    if (openDrawer) openDrawer();
+    var overlay, onKey = function (e) { if (e.key === 'Escape') close(); };
+    function close() { document.removeEventListener('keydown', onKey); if (overlay) overlay.remove(); overlay = null; openDrawer = null; }
+    overlay = h('div', { class: 'ph-overlay ph-overlay--drawer', onclick: function (e) { if (e.target === overlay) close(); } },
+      h('div', { class: 'ph-modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': title }, [
+        h('div', { class: 'ph-modal__head' }, [h('div', { style: 'min-width:0' }, [h('div', { class: 'ph-modal__title' }, title), sub ? h('div', { class: 'ph-modal__sub' }, sub) : null]), h('button', { class: 'ph-iconbtn ph-iconbtn--flat ph-iconbtn--sm', type: 'button', 'aria-label': 'Close', onclick: close }, icon(['M18 6L6 18', 'M6 6l12 12']))]),
+        h('div', { class: 'ph-modal__body' }, body)
+      ]));
+    root.appendChild(overlay);
+    document.addEventListener('keydown', onKey);
+    openDrawer = close;
+    return close;
+  }
+  function kvList(pairs, monoValues) {
+    var kv = h('dl', { class: 'ph-kv' });
+    pairs.forEach(function (p) { if (p[1] == null || p[1] === '') return; kv.appendChild(h('dt', {}, p[0])); kv.appendChild(h('dd', monoValues ? { class: 'ph-mono' } : {}, String(p[1]))); });
+    return kv;
+  }
   function who(name, sub) { return h('div', {}, [h('div', { class: 'is-strong ph-strong' }, name), h('div', { class: 'ph-muted', style: 'font-size:12px' }, sub)]); }
   function progress(pct) { return h('div', { class: 'ph-progress' + (pct >= 80 ? ' ph-progress--good' : pct >= 50 ? ' ph-progress--warn' : ' ph-progress--bad') }, h('i', { style: 'width:' + pct + '%' })); }
   function mono(v) { return v ? h('span', { class: 'ph-mono' }, v) : h('span', { class: 'ph-muted' }, '—'); }
@@ -167,6 +187,7 @@
   }
   function render() {
     clearInterval(timer);
+    if (openDrawer) openDrawer();
     var r = route();
     var key = TITLES[r.parts[0]] ? r.parts[0] : 'overview';
     [].forEach.call(document.querySelectorAll('.ph-side__item[data-route]'), function (a) {
@@ -342,9 +363,8 @@
       var s = d.summary || {};
       var rows = [];
       d.rows.forEach(function (x) {
-        var detail = h('tr', { hidden: true }, h('td', { colspan: 12 }, deviceDetail(x)));
-        function toggle() { detail.hidden = !detail.hidden; }
-        rows.push(h('tr', { class: 'is-link', tabindex: 0, onclick: toggle, onkeydown: function (e) { if (e.key === 'Enter') toggle(); } }, [
+        function open() { openDevice(x); }
+        rows.push(h('tr', { class: 'is-link', tabindex: 0, onclick: open, onkeydown: function (e) { if (e.key === 'Enter') open(); } }, [
           h('td', {}, who(x.owner_name || 'No owner', x.owner)),
           h('td', {}, x.device + (x.os_version ? ' · ' + x.platform + ' ' + x.os_version : '')),
           h('td', {}, [x.app, ' ', h('span', { class: 'ph-muted' }, x.app_version)]),
@@ -357,11 +377,11 @@
           h('td', { class: 'is-num' }, x.battery != null ? x.battery + '%' : '—'),
           h('td', { class: 'is-num' }, x.storage_free_gb != null ? x.storage_free_gb + ' GB' : '—'),
           h('td', {}, ago(x.last_seen))
-        ]), detail);
+        ]));
       });
       var cols = [{ label: 'Owner' }, { label: 'Device' }, { label: 'App' }, { label: 'Serial number' }, { label: 'MAC address' }, { label: 'Device IP' }, { label: 'Server-seen IP' }, { label: 'Build' }, { label: 'Health' }, { label: 'Battery', num: true }, { label: 'Free', num: true }, { label: 'Last seen' }];
       mount([
-        head('IT dashboard · Devices', 'Phones and tablets', plural(d.total, 'device') + '. Click a row to mark it lost or retired and add a note. Android hides the serial number and MAC address from most apps, so those can be empty.'),
+        head('IT dashboard · Devices', 'Phones and tablets', plural(d.total, 'device') + '. Click a row to see everything about it, mark it lost or retired, and add a note. Android hides the serial number and MAC address from most apps, so those can be empty.'),
         filters([
           pills([['', 'All', d.total]].concat(Object.keys(FLAG_TEXT).filter(function (k) { return s[k] != null; }).map(function (k) { return [k, FLAG_TEXT[k], s[k]]; })), health, function (v) { nav({ health: v }); }),
           appSelect(),
@@ -372,22 +392,22 @@
       ]);
     });
   }
-  function deviceDetail(x) {
-    var notes = h('textarea', { class: 'ph-control', rows: 2, style: 'height:auto;padding:10px 14px', placeholder: 'Who has it, where it is, what was done' }, x.notes);
+  function openDevice(x) {
+    var notes = h('textarea', { class: 'ph-control', rows: 3, style: 'height:auto;padding:10px 14px', placeholder: 'Who has it, where it is, what was done' }, x.notes);
     var st = select([['Active', 'Active'], ['Lost', 'Lost'], ['Retired', 'Retired']], x.state, function () {}, 'Device status');
-    var box = h('div', { class: 'ph-stack', style: 'padding:var(--sp-3) 0' }, [
-      h('div', { class: 'ph-flex ph-flex--wrap' }, [st, h('span', { class: 'ph-muted', style: 'font-size:12px' }, 'Lost and retired devices stop appearing on the chase list.')]),
-      notes,
-      h('div', {}, h('button', { class: 'ph-btn ph-btn--primary ph-btn--sm', type: 'button', onclick: function () {
-        call('set_device', { id: x.id, state: st.value, notes: notes.value }, true).then(function () { toast('Saved', 'good'); x.state = st.value; x.notes = notes.value; }).catch(fail);
+    var close;
+    var body = h('div', { class: 'ph-stack ph-stack--lg' }, [
+      h('div', { class: 'ph-flex ph-flex--wrap' }, x.flags.length ? x.flags.map(function (f) { return badge(FLAG_TEXT[f] || f, f === 'outdated_app' ? 'warn' : 'bad'); }) : [badge('Healthy', 'good')]),
+      kvList([['Owner', x.owner_name], ['Email', x.owner], ['App', x.app + ' ' + x.app_version], ['System', x.platform + ' ' + x.os_version], ['Battery', x.battery != null ? x.battery + '%' : ''], ['Free storage', x.storage_free_gb != null ? x.storage_free_gb + ' GB' : ''], ['Network', x.network], ['Last seen', ago(x.last_seen)]]),
+      h('div', {}, [h('div', { class: 'ph-label', style: 'margin-bottom:var(--sp-2)' }, 'Identifiers'), kvList([['Serial number', x.serial_number || 'not reported'], ['MAC address', x.mac_address || 'not reported'], ['Device IP', x.local_ip || 'not reported'], ['Server-seen IP', x.ip_seen || 'not reported'], ['Build number', x.build_number || 'not reported']], true)]),
+      h('div', { class: 'ph-field' }, [h('label', {}, 'Status'), st, h('div', { class: 'ph-field__hint' }, 'Lost and retired devices stop appearing on the chase list.')]),
+      h('div', { class: 'ph-field' }, [h('label', {}, 'Notes'), notes]),
+      h('div', {}, h('button', { class: 'ph-btn ph-btn--primary', type: 'button', onclick: function () {
+        call('set_device', { id: x.id, state: st.value, notes: notes.value }, true).then(function () { toast('Saved', 'good'); close(); render(); }).catch(fail);
       } }, 'Save'))
     ]);
-    if (x.developer) {
-      var kv = h('dl', { class: 'ph-kv' });
-      [['Install id', x.developer.install_id], ['Runtime', x.developer.runtime], ['First seen', x.developer.first_seen], ['Launches', x.developer.launches]].forEach(function (p) { kv.appendChild(h('dt', {}, p[0])); kv.appendChild(h('dd', { class: 'ph-mono' }, String(p[1] == null ? '' : p[1]))); });
-      box.appendChild(h('details', { class: 'itd-dev' }, [h('summary', {}, 'Developer details'), kv]));
-    }
-    return box;
+    if (x.developer) body.appendChild(h('details', { class: 'itd-dev' }, [h('summary', {}, 'Developer details'), kvList([['Install id', x.developer.install_id], ['Runtime', x.developer.runtime], ['First seen', x.developer.first_seen], ['Launches', x.developer.launches]], true)]));
+    close = drawer(x.device, x.owner_name || x.owner || '', body);
   }
 
   /* ---------- Crashlytics ---------- */
@@ -399,10 +419,9 @@
       var sum = function (key) { return d.rows.reduce(function (a, x) { return a + x[key]; }, 0); };
       var rows = [];
       d.rows.forEach(function (p) {
-        var detail = h('tr', { hidden: true }, h('td', { colspan: 9 }, issueDetail(p)));
-        function toggle() { detail.hidden = !detail.hidden; }
-        rows.push(h('tr', { class: 'is-link', tabindex: 0, onclick: toggle, onkeydown: function (e) { if (e.key === 'Enter') toggle(); } }, [
-          h('td', { class: 'is-wrap', style: 'min-width:280px;max-width:520px' }, [h('div', { class: 'ph-strong' }, p.title || '(no title)'), p.culprit ? h('div', { class: 'ph-mono ph-muted' }, p.culprit) : null]),
+        function open() { openIssue(p); }
+        rows.push(h('tr', { class: 'is-link', tabindex: 0, onclick: open, onkeydown: function (e) { if (e.key === 'Enter') open(); } }, [
+          h('td', { class: 'itd-issue' }, [h('div', { class: 'ph-strong itd-clamp' }, p.title || '(no title)'), p.culprit ? h('div', { class: 'ph-mono ph-muted ph-truncate' }, p.culprit) : null]),
           h('td', {}, badge(p.kind, KIND_BADGE[p.kind])),
           h('td', {}, p.app),
           h('td', { class: 'is-num' }, String(p.times)),
@@ -411,12 +430,12 @@
           h('td', {}, p.version ? (p.first_version && p.first_version !== p.version ? p.first_version + ' → ' + p.version : p.version) + (p.fixed_in ? ' · fixed in ' + p.fixed_in : '') : '—'),
           h('td', {}, ago(p.last_seen)),
           h('td', {}, badge(p.status, p.status === 'Open' ? 'warn' : p.status === 'Resolved' ? 'good' : ''))
-        ]), detail);
+        ]));
       });
       var cols = [{ label: 'Issue' }, { label: 'Kind' }, { label: 'App' }, { label: 'Events', num: true }, { label: 'Users', num: true }, { label: 'Devices', num: true }, { label: 'Versions' }, { label: 'Last seen' }, { label: 'Status' }];
       var bk = d.by_kind || {};
       mount([
-        head('IT dashboard · Crashlytics', 'Crashlytics', 'Crashes, errors and failed requests reported by your apps. Click an issue to see who hit it.'),
+        head('IT dashboard · Crashlytics', 'Crashlytics', 'Crashes, errors and failed requests reported by your apps. Click an issue for the details and to resolve it.'),
         filters([
           pills([['Open', 'Open', (d.by_status || {}).Open || 0], ['Resolved', 'Resolved', (d.by_status || {}).Resolved || 0], ['Ignored', 'Ignored', (d.by_status || {}).Ignored || 0]], status, function (v) { nav({ status: v }); }),
           select([['', 'All kinds'], ['crash', 'Crashes (' + (bk.crash || 0) + ')'], ['error', 'Errors (' + (bk.error || 0) + ')'], ['api', 'API failures (' + (bk.api || 0) + ')'], ['log', 'Logs (' + (bk.log || 0) + ')']], kind, function (v) { nav({ kind: v }); }, 'Kind'),
@@ -433,25 +452,28 @@
       ]);
     });
   }
-  function issueDetail(p) {
-    var who_ = h('div', { class: 'ph-muted', style: 'font-size:13px' }, 'Loading who was affected…');
-    call('problem_people', { name: p.name }).then(function (res) { who_.textContent = res.rows.length ? 'Affected: ' + res.rows.map(function (x) { return x.name + (x.times > 1 ? ' (' + x.times + '×)' : ''); }).join(', ') : 'No signed-in people recorded.'; }).catch(function () { who_.textContent = ''; });
-    function setStatus(st) { call('set_problem_status', { name: p.name, status: st }, true).then(function () { toast('Marked ' + st.toLowerCase(), 'good'); render(); }).catch(fail); }
-    var box = h('div', { class: 'ph-stack', style: 'padding:var(--sp-3) 0' }, [
-      h('div', { class: 'ph-muted', style: 'font-size:13px' }, 'First seen ' + ago(p.first_seen) + ' · last seen ' + ago(p.last_seen) + ' · ' + plural(p.times, 'event') + ' on ' + plural(p.devices, 'device')),
-      who_,
+  function openIssue(p) {
+    var who_ = h('div', { class: 'ph-muted' }, 'Loading…');
+    call('problem_people', { name: p.name }).then(function (res) { who_.textContent = res.rows.length ? res.rows.map(function (x) { return x.name + (x.times > 1 ? ' (' + x.times + '×)' : ''); }).join(', ') : 'No signed-in people recorded.'; }).catch(function () { who_.textContent = ''; });
+    var close;
+    function setStatus(st) { call('set_problem_status', { name: p.name, status: st }, true).then(function () { toast('Marked ' + st.toLowerCase(), 'good'); close(); render(); }).catch(fail); }
+    var body = h('div', { class: 'ph-stack ph-stack--lg' }, [
+      h('div', { class: 'ph-flex ph-flex--wrap' }, [badge(p.kind, KIND_BADGE[p.kind]), badge(p.status, p.status === 'Open' ? 'warn' : p.status === 'Resolved' ? 'good' : ''), badge(p.app, 'outline')]),
+      p.culprit ? h('div', { class: 'ph-mono ph-muted', style: 'overflow-wrap:anywhere' }, p.culprit) : null,
+      kvList([['Events', p.times], ['Users affected', p.people], ['Devices', p.devices], ['First seen', ago(p.first_seen)], ['Last seen', ago(p.last_seen)], ['First version', p.first_version], ['Last version', p.version], ['Fixed in', p.fixed_in]]),
+      h('div', {}, [h('div', { class: 'ph-label', style: 'margin-bottom:var(--sp-2)' }, 'Who was affected'), who_]),
       h('div', { class: 'ph-flex ph-flex--wrap' }, [
-        p.status === 'Open' ? h('button', { class: 'ph-btn ph-btn--primary ph-btn--sm', type: 'button', onclick: function () { setStatus('Resolved'); } }, 'Mark resolved') : h('button', { class: 'ph-btn ph-btn--ghost ph-btn--sm', type: 'button', onclick: function () { setStatus('Open'); } }, 'Reopen'),
-        p.status === 'Open' ? h('button', { class: 'ph-btn ph-btn--ghost ph-btn--sm', type: 'button', onclick: function () { setStatus('Ignored'); } }, 'Ignore') : null
+        p.status === 'Open' ? h('button', { class: 'ph-btn ph-btn--primary', type: 'button', onclick: function () { setStatus('Resolved'); } }, 'Mark resolved') : h('button', { class: 'ph-btn ph-btn--ghost', type: 'button', onclick: function () { setStatus('Open'); } }, 'Reopen'),
+        p.status === 'Open' ? h('button', { class: 'ph-btn ph-btn--ghost', type: 'button', onclick: function () { setStatus('Ignored'); } }, 'Ignore') : null
       ])
     ]);
-    if (p.developer) box.appendChild(problemDev(p));
-    return box;
+    if (p.developer) body.appendChild(problemDev(p));
+    close = drawer(p.title || '(no title)', plural(p.times, 'event') + ' · last seen ' + ago(p.last_seen), body);
   }
   function problemDev(p) {
     var inner = h('div', {}, h('span', { class: 'ph-muted', style: 'font-size:12px' }, 'Open to load.'));
     var loaded = false;
-    var d = h('details', { class: 'itd-dev', ontoggle: function () {
+    var d = h('details', { class: 'itd-dev', open: true, ontoggle: function () {
       if (!d.open || loaded) return;
       loaded = true;
       clear(inner);
