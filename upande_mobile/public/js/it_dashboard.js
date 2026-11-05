@@ -498,10 +498,10 @@
     return call('conversation', { id: id }).then(function (c) {
       var sendBtn;
       var msgs = h('div', { class: 'itd-msgs' }, c.messages.map(function (m) {
-        return h('div', { class: 'itd-msg ' + (m.from_staff ? 'staff' : 'person') }, [
+        return h('div', { class: 'itd-msg ' + (m.mine ? 'staff' : m.from_staff ? 'colleague' : 'person') }, [
           m.image ? h('a', { href: m.image, target: '_blank', rel: 'noopener' }, h('img', { src: m.image, alt: 'Screenshot sent with the message', loading: 'lazy', onload: function () { msgs.scrollTop = msgs.scrollHeight; } })) : null,
           h('div', { class: 'itd-msg__text' }, m.text),
-          h('small', {}, (m.by || (m.from_staff ? 'Support' : c.person)) + ' · ' + ago(m.sent_at))
+          h('small', {}, (m.mine ? 'You' : (m.by || (m.from_staff ? 'Support' : c.person))) + ' · ' + ago(m.sent_at))
         ]);
       }));
       var text = h('textarea', { class: 'ph-control', rows: 1, placeholder: 'Write an answer…', oninput: function () { text.style.height = 'auto'; text.style.height = Math.min(text.scrollHeight, 160) + 'px'; }, onkeydown: function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendBtn.click(); } } });

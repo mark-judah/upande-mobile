@@ -730,7 +730,7 @@ def conversation(id):
 			"person": head.user_full_name or head.user,
 			"user": head.user,
 			"email": frappe.db.get_value("User", head.user, "email") or head.user,
-			"messages": [{"id": m.name, "from_staff": bool(cint(m.from_staff)), "by": names.get(m.sender) or m.sender or "", "text": m.text, "sent_at": str(m.sent_at)} for m in msgs],
+			"messages": [{"id": m.name, "from_staff": bool(cint(m.from_staff)), "mine": m.sender == frappe.session.user, "by": names.get(m.sender) or m.sender or "", "text": m.text, "sent_at": str(m.sent_at)} for m in msgs],
 			"statuses": [],
 		}
 	doc = frappe.get_doc(sup.ISSUE, id)
@@ -741,14 +741,16 @@ def conversation(id):
 	# Staff comments carry the staff user's address in comment_email; show the person's name.
 	by_email = {u.email: u.full_name for u in frappe.get_all("User", filters={"email": ["in", [c.get("comment_email") for c in comments if c.get("comment_email")] or [""]]}, fields=["email", "full_name"])}
 	files = sup._files_for(sup.ISSUE, [doc.name])
-	messages = [{"id": doc.name, "from_staff": False, "by": names.get(doc.raised_by) or doc.raised_by, "text": text or subject, "sent_at": str(doc.creation), "image": files.get(doc.name)}]
+	me_email = frappe.db.get_value("User", frappe.session.user, "email") or frappe.session.user
+	messages = [{"id": doc.name, "from_staff": False, "mine": False, "by": names.get(doc.raised_by) or doc.raised_by, "text": text or subject, "sent_at": str(doc.creation), "image": files.get(doc.name)}]
 	for c in comments:
 		body = sup.plain_text(c.get("content"))
 		if not body:
 			continue
 		own = sup.is_own_issue(c.get("comment_email"), doc.raised_by, doc.raised_by)
 		who = c.get("comment_email")
-		messages.append({"id": c.get("name"), "from_staff": not own, "by": names.get(who) or by_email.get(who) or who or "", "text": body, "sent_at": str(c.get("creation"))})
+		mine = bool(who) and who in (frappe.session.user, me_email)
+		messages.append({"id": c.get("name"), "from_staff": not own, "mine": mine, "by": names.get(who) or by_email.get(who) or who or "", "text": body, "sent_at": str(c.get("creation"))})
 	device = diag.get("device") or {}
 	out = {
 		"id": doc.name,
@@ -791,7 +793,7 @@ def send(id, text=None):
 	if doc.status in ("Open", "On Hold"):
 		doc.status = "Replied"
 		doc.save(ignore_permissions=True)
-	return {"id": comment.name, "from_staff": True, "by": frappe.db.get_value("User", frappe.session.user, "full_name") or frappe.session.user, "text": message, "sent_at": str(comment.creation), "status": doc.status}
+	return {"id": comment.name, "from_staff": True, "mine": True, "by": frappe.db.get_value("User", frappe.session.user, "full_name") or frappe.session.user, "text": message, "sent_at": str(comment.creation), "status": doc.status}
 
 
 @frappe.whitelist(methods=["POST"])
