@@ -1,6 +1,6 @@
 # Upande Mobile
 
-The Frappe backend for [`@upande/mobile-kit`](https://github.com/mark-judah/upande-mobile-kit), the Settings page and update toolkit for Expo apps. One install serves any number of apps. It serves OTA updates to phones, keeps the device register, collects crash and API reports, receives problem reports and chat, and runs the **IT dashboard** at `/it-dashboard`.
+The Frappe backend for [`@upande/mobile-kit`](https://github.com/mark-judah/upande-mobile-kit), the Settings page and update toolkit for Expo apps. One install serves any number of apps. It serves OTA updates to phones, keeps the device register, collects crash and API reports, and receives problem reports and chat. It has no screens of its own: the **IT dashboard** that shows all of this lives in the `upande_core` app and reads this app's doctypes (see [The IT dashboard](#the-it-dashboard)).
 
 **Needs:** Frappe 16 (this app declares Python 3.14, which Frappe 16 requires), a bench you can run commands on, and, for each mobile app, its public GitHub repository with GitHub Pages on (the [kit README](https://github.com/mark-judah/upande-mobile-kit#readme) covers that side).
 
@@ -22,12 +22,11 @@ Do these steps in order. Each says what silently breaks if you skip it.
 ```bash
 bench get-app https://github.com/mark-judah/upande-mobile
 bench --site your.site install-app upande_mobile
-bench build --app upande_mobile
 bench --site your.site migrate
 bench restart
 ```
 
-*Skip `bench build` and the dashboard loads unstyled or blank. Skip `migrate` and problem reports and chat fail with an unknown doctype error. Skip `bench restart` and the dashboard is a 404 or old code keeps running.*
+*Skip `migrate` and problem reports and chat fail with an unknown doctype error. Skip `bench restart` and old code keeps running.*
 
 ### Step 2. Register each mobile app
 
@@ -40,11 +39,11 @@ The kit's `init` wizard prints this line with your values filled in. `app_name` 
 
 *Skip it, or leave **Enabled** off, and phones get no OTA (the manifest answers 204) and every device shows `unknown`.*
 
-### Step 3. Give the IT staff access
+### Step 3. The IT dashboard (optional)
 
-The dashboard opens only for people on the **IT Team** role profile, and for no one else, not even a System Manager who is not on it. If the site has no role profile with exactly that name, create one in Desk and give it the roles your IT staff need (not System Manager). Then add the people to it.
+The dashboard for this app's data is a separate app, `upande_core`, at `https://your.site/it-dashboard`. Install it on the same site to see updates, devices, crashes and support in one place. This app works without it. The dashboard opens only for people on the **IT Team** role profile ([details](#the-it-dashboard)).
 
-*Skip it and everyone sees "You cannot access the dashboard".*
+*Skip it and nobody has a screen for the data, but phones still get updates and reports are still collected.*
 
 ### Step 4. Check the background jobs
 
@@ -76,11 +75,10 @@ Done per app repository, in the kit README: GitHub Pages, workflow permissions, 
 | I want to | Do this |
 |---|---|
 | **Add another app** | Register it ([Step 2](#step-2-register-each-mobile-app)) |
-| **Upgrade this backend** | `cd apps/upande_mobile && git pull && cd ../..`, then `bench --site your.site migrate`, `bench build --app upande_mobile`, `bench restart` |
-| **Open the dashboard** | `https://your.site/it-dashboard`. Bookmark it: it has no Desk menu entry |
+| **Upgrade this backend** | `cd apps/upande_mobile && git pull && cd ../..`, then `bench --site your.site migrate` and `bench restart` |
+| **Open the dashboard** | `https://your.site/it-dashboard`, or the **IT Dashboard** tile on the apps screen (needs `upande_core`) |
 | **Add or remove an IT person** | Add or remove the **IT Team** role profile on their user in Desk |
-| **Add a user, role or permission without System Manager** | Use the dashboard's [User management, Role management, Doctype permissions and User permissions](#user-management) |
-| **Refresh the latest versions now** | `bench --site your.site execute upande_mobile.api.devices.refresh_latest`, or **Check for updates** in the dashboard |
+| **Refresh the latest versions now** | `bench --site your.site execute upande_mobile.api.devices.refresh_latest`, or **Check for updates** on the dashboard's Apps screen |
 | **Turn crash reports off for one app** | Untick **Enable Monitoring** on its Mobile App |
 | **Delete old events now** | `bench --site your.site execute upande_mobile.api.monitor.purge_now` |
 
@@ -90,8 +88,7 @@ Done per app repository, in the kit README: GitHub Pages, workflow permissions, 
 |---|---|
 | Phones get no OTA | The app is registered and **Enabled**; the OTA Base URL is right; something is published for the phone's runtime. Read the Error Log for "Mobile OTA manifest" |
 | Devices show `unknown` | The app is disabled or unregistered, or the hourly check has not run. Run `refresh_latest` and read `Last Error` on the Mobile App |
-| The dashboard is unstyled or a 404 | `bench build --app upande_mobile`, then `bench restart` |
-| The dashboard says you cannot access it | The user is not on the **IT Team** role profile (Step 3) |
+| The dashboard says you cannot access it, or shows nothing for the apps | The user is not on the **IT Team** role profile, or `upande_mobile` is not installed on the site (see `upande_core`) |
 | Reports are paused or refused | **Enable Monitoring** is off, the app is unknown, or guests are not allowed for the app |
 | No push on a reply | The reply must be a **Comment** on the Issue, and a worker must run on the `short` queue (Step 4) |
 
@@ -191,53 +188,18 @@ The kit adds pages and tools inside each Expo app, and this backend feeds them. 
 | **Device reports** on launch, sign-in and foreground | `upande_mobile.api.register_install` |
 | **Crash and API reports** | `upande_mobile.api.monitor.ingest` |
 
-The in-app Devices page is about versions. Battery, storage, network and each device's crash history are in the [web portal](#the-it-dashboard).
+The in-app Devices page is about versions. Battery, storage, network and each device's crash history are in the [IT dashboard](#the-it-dashboard).
 
 ## The IT dashboard
 
-**`https://your.site/it-dashboard`** is an IT dashboard for the person who looks after the apps: who is out of date, which devices need a hand, what is crashing and who is waiting for an answer. It is written in plain language; the developer view is folded away.
+The IT dashboard is **not part of this app**. It lives in `upande_core`, at `https://your.site/it-dashboard`, and simply reads the doctypes this app owns: **Mobile App**, **Mobile App Install**, **Mobile Issue**, **Mobile Event**, **Mobile Report**, **Mobile Chat Thread**, **Mobile Chat Message**, **Mobile Push Token** and **Mobile Reminder**. It borrows this app's helpers (rating a device against the latest version, reading a support thread, sending a push) only when a mobile screen asks for data, so `upande_core` still loads, and its other screens still work, on a site without this app.
 
-- **Who can open it:** Only people on the **IT Team** role profile (nothing to create or migrate). A System Manager who is not on the profile is turned away too, and can add the profile to their own account in Desk. Everyone else who opens `/it-dashboard` sees a page explaining that the dashboard is for the IT Team, with a link to the App store. Developer details (stack traces, install ids, runtime, event ids, diagnostics) are shown to System Managers only. Signed-out visitors are sent to the login page and back. There is no Desk menu entry, so bookmark the address.
-- **Before it works:** the page loads its CSS and JavaScript from `/assets/upande_mobile/` (run `bench build --app upande_mobile` once after installing), and an app must be registered.
-- **The app selector** at the top filters every screen to one app. Everything from a device is shown as plain text, never as HTML.
+What it shows, who can open it, and how to run it are in the `upande_core` README. In short: updates (who is behind, reminders), devices, crashes, support chat, apps and the app store, plus user, role and permission management for the IT Team role profile.
 
-| Screen | Shows |
-|---|---|
-| Overview | Four headline numbers (people, devices, adoption, open tickets), then charts: people by update state per app, **Android versions** (older than the supported minimum in red), events reported per day for 14 days by kind, support tickets by status, device health. The app filter applies to all of it |
-| Updates | The chase list. One row per person and app: version they have and need, how long ago the release came out, last seen, team (from Employee, when present), how many reminders they had. Groups: pending update (reopening the app is enough), pending install (an APK), not seen lately, up to date. Select people and press **Remind** to send a push notification |
-| Devices | Inventory with serial number, MAC address, device IP, the IP the server saw and build number as columns, plus owner, model, app, health, battery, storage and last seen. Open a row to mark the device Active, Lost or Retired and add a note. Lost and retired devices drop off the chase list |
-| Crashlytics | The issues the apps reported (crashes, errors, API failures, logs), most users affected first: title, file, kind, events, users, devices, versions, last seen, status. Filter by status, kind, app and search; open an issue to see who hit it and mark it resolved or ignored. Stack traces and event ids sit in a folded Developer details panel (System Managers) |
-| Support | The inbox (full name first, then email), longest wait on top, with **chat**; the screenshot a person sent shows inside their first message, like a chat app: read the conversation and answer in the page. The answer is stored on the conversation (a Comment on the Issue, so Desk still shows it) and pushed to the person's phone, so nobody has to open the Issue to reply. Change the status from the same page |
-| Apps | One row per app: share of people on the current version, behind, away, problems, open tickets |
+What this app provides for it:
 
-### User management
-
-A sixth screen, **User management**, lets the IT team add, edit, disable and delete people and give them role profiles without being System Managers (a System Manager can also see the Server Scripts, Client Scripts and the rest of the code, which is why that role should not go to IT). It is shown only to people who hold the **IT Team** role profile and to System Managers. There is nothing to create or migrate: add a person to the IT Team profile in Desk and the screen appears for them. That profile cannot be handed out from this screen, so only a System Manager decides who can manage users, and every change is checked on the server, not just hidden in the page.
-
-- **What you can do:** add a person with a password and role profiles; rename them; turn the account on or off; add or remove one role profile at a time; reset the password; delete. Every change is written to the person's record as an "IT:" note, shown under "What IT changed".
-- **Roles come from role profiles.** In v16 a person's roles are rebuilt from their role profiles on every save, so this screen never sets individual roles. Removing a person's last profile removes all their roles.
-- **Guard rails:** System Manager, Script Manager, Administrator and Guest can never be given from here, and a role profile that contains one of them cannot be assigned from here either. People who already hold one of those roles, and the Administrator and Guest accounts, are read-only here (manage them in Desk). Someone who is not a System Manager cannot create or change accounts on the `upande` domain. Nobody can disable, delete or change the role profiles of their own account. Deleting is refused when records point at the person; disable them instead.
-- **Not here:** creating or editing role profiles themselves (that changes access for everyone who holds them), and system roles. Do those in Desk.
-
-### Role management, Doctype permissions and User permissions
-
-Three more screens under the same IT Team gate (and the same rule that nothing is checked only in the page: the server refuses too).
-
-- **Role management:** list the roles and the role profiles. Add a role, or add a role to a role profile (everyone on the profile gets it; Frappe updates them in the background, so it can take a moment). Removing a role from a profile and deleting roles are not offered. System Manager, Script Manager, Administrator, Guest and All are never listed, created or added.
-- **Doctype permissions:** the Role Permissions Manager. Search a doctype, see which roles can select, read, write, create, delete, submit, cancel, amend, report, export, import, share, print, email and mask it, tick or untick any of them, add a role (starting with read), remove a rule, or reset the doctype to its shipped rules. Rules for System Manager and Script Manager are shown but locked, and doctypes that hold code, users, roles or permissions (Server Script, Client Script, DocType, User, Role, Custom DocPerm, System Settings ...) cannot be edited here, because giving a role write access to them would be a way round the guard rails. Your first change copies the shipped rules into Custom DocPerm, as in Desk.
-- **User permissions:** list, add and remove user permissions (limit a person to one Company, Farm, Warehouse ...). You cannot set them for people who hold a system role or for the Administrator.
-- **Toasts:** every create, change and delete in the dashboard shows a toast. (Toasts used to be placed outside the dashboard wrapper, where the colours were not defined, so they were invisible; they now live inside it.)
-
-### App store
-
-**`https://your.site/app-store`** lists every enabled app that has a published APK, for any signed-in user (the dashboard sidebar links to it). The page never shows the GitHub repository: **Download** goes through `upande_mobile.api.store.download`, which fetches the newest APK from GitHub (only github.com and GitHub's download hosts) into the site's private files on first use, serves it from there afterwards and deletes older copies. Public repositories only: a private repo's release link cannot be fetched this way.
-
-**Check for updates.** The App store and Apps screens have a **Check for updates** button that runs the same GitHub check as the hourly job (`upande_mobile.api.store.check_updates`), for any signed-in user, at most once every two minutes for everyone; inside that window it says how long to wait.
-
-### Reminders
-
-- **Remind** sends a push ("Version 2.1.0 is ready. Close and reopen the app to get it", or "needs a fresh install" when an APK is required). Someone reminded in the last 20 hours is skipped, and the page says who has not allowed notifications. Every reminder is logged in **Mobile Reminder** (who, when, from which version to which, who sent it) and shown on the chase list as "reminded twice".
-- A device marked Lost or Retired is never chased. Reminders are only sent when someone presses Remind; nothing is sent automatically.
+- **The app store's data.** `upande_mobile.api.store.apps`, `download` (the newest APK, fetched from GitHub into the site's private files, never revealing the repository) and `check_updates` (the same GitHub check as the hourly job, at most once every two minutes for everyone). The page itself is the dashboard's `/app-store`.
+- **Reminders.** A reminder is a push sent through `upande_mobile.push.notify_user` and logged in **Mobile Reminder**.
 
 ## Monitoring
 
@@ -265,7 +227,7 @@ A daily job at 02:30 deletes events older than each app's Event Retention (defau
 
 ## Support
 
-Problem reports and chat from the app's **Help** card, in the portal under **Support** (`/it-dashboard#/support`). They need the doctypes below, so run `bench --site your.site migrate` after installing or upgrading.
+Problem reports and chat from the app's **Help** card, in the IT dashboard's **Support** screen (`/it-dashboard#/support`). They need the doctypes below, so run `bench --site your.site migrate` after installing or upgrading.
 
 ### Problem reports
 
@@ -275,7 +237,7 @@ Problem reports and chat from the app's **Help** card, in the portal under **Sup
 
 | Part | How it is filled |
 |---|---|
-| Subject | `[App Name] what the person wrote`, for example `[Mona Shelve] Wrong length when traced`. The bracket is how the portal tells which app an Issue came from |
+| Subject | `[App Name] what the person wrote`, for example `[Mona Shelve] Wrong length when traced`. The bracket is how the dashboard tells which app an Issue came from |
 | Raised By | The signed-in user's email |
 | Description | What the person wrote, then a divider line (`Diagnostic details (attached automatically)`), then the diagnostics as readable JSON |
 | Attachment | The **private screenshot** of the screen they were on, attached to the Issue (it shows in the Issue's attachments). It must be a real JPEG of at most 1.5 MB; anything else is dropped and the Issue is still created |
@@ -283,7 +245,7 @@ Problem reports and chat from the app's **Help** card, in the portal under **Sup
 
 The **diagnostics** are whitelisted device facts (including Wi-Fi and latency), the last 15 requests (addresses and status only, redacted) and **the last crash** (message, stack, whether it was fatal, the screen). Everything from the phone is HTML-escaped before it goes into the description.
 
-**In the portal.** The Support page lists the Issues whose subject starts with a registered app's `[name]`, with the device, OS and app version read back from the diagnostics, the screenshot, and the Issue's own statuses (**Open, Replied, On Hold, Resolved, Closed**). Changing the status there saves the Issue through its document, so its own rules run. Every report links to the Issue in Desk. A Mobile Report keeps its own statuses (Open, In Progress, Resolved).
+**In the dashboard.** The Support page lists the Issues whose subject starts with a registered app's `[name]`, with the device, OS and app version read back from the diagnostics, the screenshot, and the Issue's own statuses (**Open, Replied, On Hold, Resolved, Closed**). Changing the status there saves the Issue through its document, so its own rules run. Every report links to the Issue in Desk. A Mobile Report keeps its own statuses (Open, In Progress, Resolved).
 
 Limits: 10 reports per user per hour; subject 140 characters, details 5000; diagnostics 64 KB.
 
@@ -292,18 +254,18 @@ Limits: 10 reports per user per hour; subject 140 characters, details 5000; diag
 **On a site with Issues, a conversation is an Issue.** There is nothing new for your team to learn:
 
 - `threads` lists the signed-in person's Issues whose subject starts with `[App Name]` (newest first, 30), with the status, the newest activity, when support last answered, and a preview. `thread` returns one conversation: `thread` (id, subject, status, created, `has_screenshot`), `messages` (what the person wrote, read back from the description, then every **Comment** on the Issue, each marked from support or from the person) and `events`, the status history: a `created` event, then one `status` event per change of the Issue's status read from its Version documents (`status`, `previous`, a plain-words `label` such as "Replied", "Marked resolved" or "Reopened", and `sent_at`). The app merges `events` and `messages` by time into one timeline. `reply` adds the person's answer as a Comment on the Issue; an Issue that was *Replied* or *Resolved* goes back to *Open*, and a *Closed* one refuses (the person starts a new one).
-- **Support replies the way they already do: a Comment on the Issue in Desk.** Only Comments appear in the app (an email reply or an internal note does not). The portal's Chat tab explains this instead of listing threads.
+- **Support replies the way they already do: a Comment on the Issue in Desk.** Only Comments appear in the app (an email reply or an internal note does not). The dashboard's Support screen explains this instead of listing threads.
 - A person can only read and answer **their own** Issues (`raised_by` is their user or email); anything else is a permission error. Limits: 60 messages per user per hour, 2000 characters each.
 - Replies reach the phone as [push notifications](#push-notifications).
 
-**On a site without the Issue doctype** the old single-thread chat is used: one **Mobile Chat Thread** per person per app holding **Mobile Chat Message** rows, answered from the portal's Chat tab (`chat`, `chat_threads`, `chat_thread`, `chat_reply`). The app learns which mode applies from `threads` (`mode: "issue"` or `"chat"`).
+**On a site without the Issue doctype** the old single-thread chat is used: one **Mobile Chat Thread** per person per app holding **Mobile Chat Message** rows, answered from the dashboard's Support screen (`chat`, `chat_threads`, `chat_thread`, `chat_reply`). The app learns which mode applies from `threads` (`mode: "issue"` or `"chat"`).
 
 ### Push notifications
 
 A reply is pushed to the person's phone the moment support comments.
 
 - **Tokens.** The app calls `register_push` with its Expo push token; it is stored in **Mobile Push Token** (one row per token, filed under the signed-in user and the app, `System Manager` access only). A token that moves to another person (a handed-over phone) follows its new owner, a person keeps their newest 5 devices per app, and `unregister_push` removes the caller's own token (the app does this on sign-out). 20 registrations per user per hour.
-- **The trigger.** A `doc_events` hook on **Comment** (`after_insert`) queues `upande_mobile.push.notify_issue_reply` on the `short` queue, so saving the comment never waits for the push. The job sends only when the Comment is a real comment (not an attachment or info entry) on an Issue whose subject starts with `[App]` of a registered Mobile App, written by someone other than the person who raised it, with some text. The person is found from the Issue's `raised_by`. On a site without Issue, a reply from the portal's Chat tab pushes the same way.
+- **The trigger.** A `doc_events` hook on **Comment** (`after_insert`) queues `upande_mobile.push.notify_issue_reply` on the `short` queue, so saving the comment never waits for the push. The job sends only when the Comment is a real comment (not an attachment or info entry) on an Issue whose subject starts with `[App]` of a registered Mobile App, written by someone other than the person who raised it, with some text. The person is found from the Issue's `raised_by`. On a site without Issue, a reply from the dashboard's Support screen pushes the same way.
 - **The message.** Title `Reply on <subject>`, body `<who>: <start of the reply>` (120 characters), channel `support`, high priority, and a small data payload (`upande_mobile: support`, the Issue id, the app) the kit uses to open the conversation when tapped.
 - **Only Expo is contacted**: `https://exp.host/--/api/v2/push/send`, from a fixed constant. Tokens Expo answers `DeviceNotRegistered` for are deleted. A failed push is logged ("Mobile push: send failed") and never breaks the reply.
 - **Turn it off** with `"upande_mobile_push": 0` in `site_config.json`.
@@ -313,7 +275,7 @@ A reply is pushed to the person's phone the moment support comments.
 
 - Only signed-in users can submit or chat, and every row is filed under the session user, never one claimed in the request.
 - Diagnostics pass the same device whitelist and redaction as crash reports; free text in the details is redacted for token-shaped text.
-- The portal shows reports to System Managers only. An Issue keeps the permissions your Issue doctype already has; a Mobile Report, a chat thread and its messages are readable by System Managers only.
+- The dashboard shows reports to the IT Team only. An Issue keeps the permissions your Issue doctype already has; a Mobile Report, a chat thread and its messages are readable by System Managers only.
 
 ## Endpoints
 
@@ -339,10 +301,7 @@ All paths are under `/api/method/`.
 | `upande_mobile.api.support.unregister_push` (`token`) | POST | signed-in user | Forget the caller's own token |
 | `upande_mobile.api.support.chat` | GET / POST | signed-in user | The single-thread chat for sites without an Issue doctype. `GET` returns messages (and marks replies read), `?count_only=1` the unread count; `POST` sends `text` |
 | `upande_mobile.api.support.reports`, `report`, `set_report_status`, `chat_threads`, `chat_thread`, `chat_reply` | GET / POST | System Manager | Support data for Desk and integrations |
-| `upande_mobile.api.store.apps`, `download`, `check_updates` (POST), `installers` (IT only) | GET | any signed-in user | The app store |
-| `upande_mobile.api.usermgmt.*` (`meta`, `users`, `detail`, `create`, `update`, `add_role_profile`, `remove_role_profile`, `reset_password`, `delete`) | GET / POST | IT Team role profile | User management |
-| `upande_mobile.api.rolemgmt.*` (`roles`, `profiles`, `create_role`, `add_role_to_profile`), `upande_mobile.api.permmgmt.*` (`doctypes`, `rules`, `set_permission`, `add_rule`, `remove_rule`, `reset_rules`, `user_permissions`, `add_user_permission`, `remove_user_permission`, ...) | GET / POST | IT Team role profile | Role, doctype and user permission management |
-| `upande_mobile.api.itdesk.*` (`today`, `updates`, `remind`, `reminders`, `device_list`, `set_device`, `problems`, `inbox`, `conversation`, `send`, `apps`) | GET / POST | IT Team role profile | The IT dashboard |
+| `upande_mobile.api.store.apps`, `download`, `check_updates` (POST) | GET | any signed-in user | The app store's data |
 | `upande_mobile.api.monitor.set_issue_status`, `purge_now` | POST | System Manager | Resolve or ignore an issue; delete expired events now |
 
 ## Site settings
@@ -365,7 +324,7 @@ All optional, in `site_config.json`.
 - Redaction works by name and by shape. A secret with another name, in free text, can still be stored. Crash data can contain personal data (screen names, ids in URLs). Turn monitoring off per app, shorten retention, or add redact keys to fit your policy.
 - Bodies are capped (16 KB hard limit) and binary or multipart bodies are replaced by a size note.
 - Reports are filed under the session user and the IP address the server saw. A name or role claimed in the payload is ignored.
-- Only System Managers can read the register, issues, events and the dashboard. Mobile App, Mobile App Install, Mobile Issue, Mobile Event, Mobile Report, Mobile Chat Thread, Mobile Chat Message and Mobile Push Token grant access to System Manager only (Mobile App Install User is a child table of the install).
+- Only System Managers can read the register, issues and events through this app's own endpoints. Mobile App, Mobile App Install, Mobile Issue, Mobile Event, Mobile Report, Mobile Chat Thread, Mobile Chat Message and Mobile Push Token grant access to System Manager only (Mobile App Install User is a child table of the install).
 - **GitHub is read by the server only.** The only host requested is `api.github.com`, over https, for a repo that passed the `owner/repo` check; a redirect is followed only within that host. The token (if set) goes only to that host, is never sent to a browser or a phone, and is removed from any error text that is stored. Release notes are never treated as HTML, and every link in them or in the cached data is checked again when the page is built.
 - **Fetches are restricted.** The OTA Base URL and the GitHub repo are fetched by the hourly job and, for the OTA URL, by the public manifest endpoint. They are validated in `register_app`, on every save of a Mobile App and again at fetch time, so an edited record cannot point the server at an internal host.
 
@@ -378,15 +337,12 @@ cd apps/upande_mobile
 ../../env/bin/python -W ignore -m unittest discover -s upande_mobile/tests -t .
 ```
 
-Layout: `upande_mobile/api/` (endpoints: `apps.py`, `devices.py`, `monitor.py`, `ota.py`, `support.py`, and `push.py` beside them), `github.py` (reading GitHub and release notes), `redaction.py`, `fingerprint.py`, `validation.py`, the nine doctypes in `upande_mobile/upande_mobile/doctype/` (Mobile App, Mobile App Install, Mobile App Install User, Mobile Issue, Mobile Event, Mobile Report, Mobile Chat Thread, Mobile Chat Message, Mobile Push Token), the dashboard page in `upande_mobile/www/it-dashboard.html` and `upande_mobile/public/`.
+Layout: `upande_mobile/api/` (endpoints: `apps.py`, `devices.py`, `monitor.py`, `ota.py`, `support.py`, and `push.py` beside them), `github.py` (reading GitHub and release notes), `redaction.py`, `fingerprint.py`, `validation.py`, the nine doctypes in `upande_mobile/upande_mobile/doctype/` (Mobile App, Mobile App Install, Mobile App Install User, Mobile Issue, Mobile Event, Mobile Report, Mobile Chat Thread, Mobile Chat Message, Mobile Push Token). There are no pages or assets: the dashboard is in `upande_core`.
 
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `/it-dashboard` is a 404 | The app is not installed on this site, or the bench was not restarted | `bench --site your.site install-app upande_mobile`, then `bench restart` |
-| `/it-dashboard` loads without styling or stays blank | The assets were not built | `bench build --app upande_mobile`, then restart |
-| `/it-dashboard` says you cannot access it | The user is not on the **IT Team** role profile | Add the profile to the user in Desk |
 | Phones get no OTA (the manifest answers 204) | The app is not registered and enabled, has no OTA Base URL, or nothing is published for the phone's runtime | Run `register_app`; check the runtime of the latest release equals the app's `runtimeVersion`; read the Error Log for "Mobile OTA manifest" entries |
 | Devices show `unknown` | The app is disabled or not registered, or the hourly check has not run or found no manifest | Run `register_app`, then `bench --site your.site execute upande_mobile.api.devices.refresh_latest`, then read `Last Error` on the Mobile App |
 | Latest APK is empty | The repo name is wrong or private, or GitHub rate limited the server | Fix `github_repo`; set `upande_mobile_github_token` |
