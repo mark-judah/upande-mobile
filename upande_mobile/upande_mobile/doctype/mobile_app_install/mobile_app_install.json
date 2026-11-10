@@ -129,39 +129,39 @@
    "label": "Device Name"
   },
   {
+   "description": "The installed app's build number (Android versionCode / iOS build).",
    "fieldname": "build_number",
    "fieldtype": "Data",
    "label": "Build Number",
-   "read_only": 1,
-   "description": "The installed app's build number (Android versionCode / iOS build)."
+   "read_only": 1
   },
   {
+   "description": "The address the phone has on its own network, as it reports it (the address the server saw is IP Address).",
    "fieldname": "local_ip",
    "fieldtype": "Data",
    "label": "Device IP",
-   "read_only": 1,
-   "description": "The address the phone has on its own network, as it reports it (the address the server saw is IP Address)."
+   "read_only": 1
   },
   {
+   "description": "Only when the phone can give it: Android 10+ and iOS hide it from apps.",
    "fieldname": "mac_address",
    "fieldtype": "Data",
    "label": "MAC Address",
-   "read_only": 1,
-   "description": "Only when the phone can give it: Android 10+ and iOS hide it from apps."
+   "read_only": 1
   },
   {
+   "description": "Only when the phone can give it: Android 10+ and iOS hide it from apps. Managed handhelds can supply it.",
    "fieldname": "serial_number",
    "fieldtype": "Data",
    "label": "Serial Number",
-   "read_only": 1,
-   "description": "Only when the phone can give it: Android 10+ and iOS hide it from apps. Managed handhelds can supply it."
+   "read_only": 1
   },
   {
+   "description": "The Android ID the phone reports: stays the same across app updates and reinstalls, changes after a factory reset. Use it to tell phones apart and to link one to an asset.",
    "fieldname": "android_id",
    "fieldtype": "Data",
    "label": "Device ID",
-   "read_only": 1,
-   "description": "The Android ID the phone reports: stays the same across app updates and reinstalls, changes after a factory reset. Use it to tell phones apart and to link one to an asset."
+   "read_only": 1
   },
   {
    "fieldname": "is_physical_device",
@@ -319,12 +319,12 @@
    "label": "IT"
   },
   {
+   "default": "Active",
    "fieldname": "device_state",
    "fieldtype": "Select",
+   "label": "Device State",
    "options": "Active\nLost\nRetired",
-   "default": "Active",
-   "search_index": 1,
-   "label": "Device State"
+   "search_index": 1
   },
   {
    "fieldname": "it_notes",
@@ -352,6 +352,18 @@
    "role": "System Manager",
    "share": 1,
    "write": 1
+  },
+  {
+   "create": 0,
+   "delete": 0,
+   "email": 0,
+   "export": 0,
+   "print": 0,
+   "read": 1,
+   "report": 1,
+   "role": "Mobile Viewer",
+   "share": 0,
+   "write": 0
   }
  ],
  "row_format": "Dynamic",
