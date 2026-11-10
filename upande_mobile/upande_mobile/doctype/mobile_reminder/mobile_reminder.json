@@ -21,28 +21,28 @@
   {
    "fieldname": "user",
    "fieldtype": "Link",
+   "label": "User",
    "options": "User",
-   "reqd": 1,
-   "search_index": 1,
    "read_only": 1,
-   "label": "User"
+   "reqd": 1,
+   "search_index": 1
   },
   {
    "fieldname": "app",
    "fieldtype": "Link",
+   "label": "App",
    "options": "Mobile App",
-   "reqd": 1,
-   "search_index": 1,
    "read_only": 1,
-   "label": "App"
+   "reqd": 1,
+   "search_index": 1
   },
   {
+   "default": "update",
    "fieldname": "kind",
    "fieldtype": "Select",
+   "label": "Kind",
    "options": "update\nmanual",
-   "read_only": 1,
-   "default": "update",
-   "label": "Kind"
+   "read_only": 1
   },
   {
    "fieldname": "column_break_r",
@@ -51,22 +51,22 @@
   {
    "fieldname": "sent_by",
    "fieldtype": "Link",
+   "label": "Sent By",
    "options": "User",
-   "read_only": 1,
-   "label": "Sent By"
+   "read_only": 1
   },
   {
    "fieldname": "sent_at",
    "fieldtype": "Datetime",
+   "label": "Sent At",
    "read_only": 1,
-   "search_index": 1,
-   "label": "Sent At"
+   "search_index": 1
   },
   {
    "fieldname": "delivered",
    "fieldtype": "Int",
-   "read_only": 1,
-   "label": "Devices Reached"
+   "label": "Devices Reached",
+   "read_only": 1
   },
   {
    "fieldname": "section_r",
@@ -75,20 +75,20 @@
   {
    "fieldname": "installed_version",
    "fieldtype": "Data",
-   "read_only": 1,
-   "label": "Installed Version"
+   "label": "Installed Version",
+   "read_only": 1
   },
   {
    "fieldname": "target_version",
    "fieldtype": "Data",
-   "read_only": 1,
-   "label": "Target Version"
+   "label": "Target Version",
+   "read_only": 1
   },
   {
    "fieldname": "message",
    "fieldtype": "Small Text",
-   "read_only": 1,
-   "label": "Message"
+   "label": "Message",
+   "read_only": 1
   }
  ],
  "index_web_pages_for_search": 0,
@@ -109,6 +109,18 @@
    "read": 1,
    "report": 1,
    "role": "System Manager",
+   "share": 0,
+   "write": 0
+  },
+  {
+   "create": 0,
+   "delete": 0,
+   "email": 0,
+   "export": 0,
+   "print": 0,
+   "read": 1,
+   "report": 1,
+   "role": "Mobile Viewer",
    "share": 0,
    "write": 0
   }

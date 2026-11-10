@@ -154,28 +154,6 @@ def download(app=None):
 	frappe.response["content_type"] = "application/vnd.android.package-archive"
 
 
-@frappe.whitelist(methods=["GET"])
-def installers(app=None):
-	"""Everyone who has installed `app`, with the version they run and when they last opened it. IT staff only: it lists
-	people, which the public list of apps does not."""
-	from upande_mobile.api import itdesk
-
-	if not itdesk.can_use():
-		frappe.throw(_("Only the IT Team can see who installed an app."), frappe.PermissionError)
-	if not frappe.db.exists(MOBILE_APP, app):
-		frappe.throw(_("Unknown app."), frappe.DoesNotExistError)
-	rows = itdesk.people(app)
-	rows.sort(key=lambda p: str(p["last_seen"] or ""), reverse=True)
-	return {
-		"app": app,
-		"people": [
-			{"user": p["user"], "name": p["full_name"], "team": p["team"], "version": p["installed"], "bucket": p["bucket"], "device": p["device"], "last_seen": p["last_seen"]}
-			for p in rows
-		],
-		"latest": rows[0]["target"] if rows else "",
-	}
-
-
 CHECK_COOLDOWN_SECONDS = 120
 
 

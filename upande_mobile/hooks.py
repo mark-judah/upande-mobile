@@ -18,9 +18,8 @@ scheduler_events = {
 doc_events = {"Comment": {"after_insert": "upande_mobile.push.on_comment"}}
 
 # Composite indexes the dashboard's filters rely on (idempotent).
-after_migrate = ["upande_mobile.indexes.ensure_indexes"]
+after_migrate = ["upande_mobile.indexes.ensure_indexes", "upande_mobile.setup.give_it_team_the_role"]
 
-# The IT dashboard used to live at /mobile-monitor: keep old bookmarks working.
-website_redirects = [
-	{"source": "/mobile-monitor", "target": "/it-dashboard"},
-]
+# The role the doctypes' permission rows link to, before they are imported.
+before_migrate = ["upande_mobile.setup.ensure_viewer_role"]
+after_install = "upande_mobile.setup.ensure_viewer_role"
