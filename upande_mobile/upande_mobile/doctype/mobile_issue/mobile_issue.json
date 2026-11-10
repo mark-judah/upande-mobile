@@ -90,6 +90,7 @@
    "fieldname": "culprit",
    "fieldtype": "Data",
    "label": "Culprit",
+   "permlevel": 1,
    "read_only": 1
   },
   {
@@ -182,6 +183,30 @@
    "print": 0,
    "read": 1,
    "report": 1,
+   "role": "System Manager",
+   "share": 0,
+   "write": 1
+  },
+  {
+   "create": 0,
+   "delete": 0,
+   "email": 0,
+   "export": 0,
+   "print": 0,
+   "read": 1,
+   "report": 1,
+   "role": "Mobile Viewer",
+   "share": 0,
+   "write": 0
+  },
+  {
+   "create": 0,
+   "delete": 0,
+   "email": 0,
+   "export": 0,
+   "permlevel": 1,
+   "print": 0,
+   "read": 1,
    "role": "System Manager",
    "share": 0,
    "write": 1

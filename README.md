@@ -45,6 +45,10 @@ The dashboard for this app's data is a separate app, `upande_core`, at `https://
 
 *Skip it and nobody has a screen for the data, but phones still get updates and reports are still collected.*
 
+#### What IT sees in Desk
+
+IT staff can open the Mobile doctypes (Mobile App, Mobile App Install, Mobile Issue, Mobile Event, Mobile Report, Mobile Reminder) in Desk, read-only, through the **Mobile Viewer** role. `bench migrate` creates the role and adds it to the **IT Team** role profile. Every field that holds a backend address is at permission level 1, which only **System Manager** has: `github_repo`, `ota_base_url`, `latest_apk_url`, `github_error`, `github_data` and `last_error` on Mobile App, `req_url`, `req_error`, `request`, `breadcrumbs` and `stack` on Mobile Event, `culprit` on Mobile Issue, and `diagnostics` and `last_crash` on Mobile Report. A field a user cannot read is left out of the form, the list and report views, the API and exports, not just hidden. Chat threads, chat messages and push tokens are not opened to the role at all.
+
 ### Step 4. Check the background jobs
 
 The hourly update check needs the **scheduler**, and reply notifications need a worker on the `short` queue. On a normal production bench both already run. Check with `bench --site your.site doctor`.
