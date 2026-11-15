@@ -35,17 +35,25 @@ def clean_token(value):
 	return token if TOKEN_PATTERN.match(token) else ""
 
 
-def build_messages(tokens, title, body, data):
-	"""One Expo push message per token. The payload carries only an id, never the message text beyond the preview."""
+def build_messages(tokens, title, body, data, channel=CHANNEL_ID, route=None):
+	"""One Expo push message per token. The payload carries only an id, never the message text beyond the preview.
+
+	With a `route` (a screen the app should open) the payload carries it and is not tagged as a support push; without
+	one it is tagged `upande_mobile: support`, exactly as before."""
+	payload = dict(data or {})
+	if route:
+		payload["route"] = route
+	else:
+		payload["upande_mobile"] = "support"
 	return [
 		{
 			"to": token,
 			"title": (title or "")[:100],
 			"body": (body or "")[:PREVIEW_LENGTH],
 			"sound": "default",
-			"channelId": CHANNEL_ID,
+			"channelId": channel or CHANNEL_ID,
 			"priority": "high",
-			"data": dict(data or {}, upande_mobile="support"),
+			"data": dict(payload),
 		}
 		for token in tokens
 	]
@@ -76,15 +84,17 @@ def _post(messages):
 	return res.json()
 
 
-def notify_user(app, user, title, body, data=None):
-	"""Push to every registered device of `user` for `app`. Never raises: a failed push must not break the reply."""
+def notify_user(app, user, title, body, data=None, route=None, channel=CHANNEL_ID):
+	"""Push to every registered device of `user` for `app`. Never raises: a failed push must not break the reply.
+
+	`route` makes the push open that screen in the app (and drops the support tag); `channel` is the Android channel."""
 	if not enabled():
 		return 0
 	try:
 		tokens = tokens_for(app, user)
 		if not tokens:
 			return 0
-		response = _post(build_messages(tokens, title, body, dict(data or {}, app=app)))
+		response = _post(build_messages(tokens, title, body, dict(data or {}, app=app), channel=channel, route=route))
 		for token in dead_tokens(tokens, response):
 			frappe.db.delete(PUSH, {"token": token})
 		return len(tokens)

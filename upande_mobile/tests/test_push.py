@@ -42,6 +42,28 @@ class TestPushPure(unittest.TestCase):
 		self.assertEqual(push.dead_tokens(tokens, None), [])
 
 
+class TestRouteMessages(unittest.TestCase):
+	def test_route_is_in_the_payload_and_drops_the_support_tag(self):
+		msg = push.build_messages([TOKEN], "t", "b", {"kind": "task-due"}, channel="tasks", route="/task/TASK-1")[0]
+		self.assertEqual(msg["data"]["route"], "/task/TASK-1")
+		self.assertNotIn("upande_mobile", msg["data"])
+		self.assertEqual(msg["channelId"], "tasks")
+
+	def test_without_a_route_the_support_behaviour_is_unchanged(self):
+		msg = push.build_messages([TOKEN], "t", "b", {"issue": "ISS-1"})[0]
+		self.assertEqual(msg["data"]["upande_mobile"], "support")
+		self.assertNotIn("route", msg["data"])
+		self.assertEqual(msg["channelId"], "support")
+
+	def test_notify_user_passes_route_and_channel_through(self):
+		with patch.object(push, "enabled", return_value=True), patch.object(push, "tokens_for", return_value=[TOKEN]), patch.object(push, "_post", return_value={"data": [{"status": "ok"}]}) as post:
+			push.notify_user("Upande Dev Tools", "a@b.c", "t", "b", {"kind": "event"}, route="/deployments", channel="events")
+		sent = post.call_args[0][0][0]
+		self.assertEqual(sent["data"]["route"], "/deployments")
+		self.assertEqual(sent["channelId"], "events")
+		self.assertEqual(sent["data"]["app"], "Upande Dev Tools")
+
+
 class TestSwitch(unittest.TestCase):
 	def test_site_config_can_turn_push_off(self):
 		for off in (0, False, "0"):

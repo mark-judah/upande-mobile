@@ -41,7 +41,7 @@
    "fieldname": "kind",
    "fieldtype": "Select",
    "label": "Kind",
-   "options": "update\nmanual",
+   "options": "update\nmanual\ntask_due\ndigest\nevent",
    "read_only": 1
   },
   {
