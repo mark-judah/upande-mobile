@@ -33,6 +33,10 @@ TOKEN_PATTERN = re.compile(r"^(Exponent|Expo)PushToken\[[A-Za-z0-9_\-]{8,80}\]$"
 MAX_TOKENS_PER_USER_APP = 5
 PREVIEW_LENGTH = 120
 CHANNEL_ID = "support"
+# Android notification channels the apps create; anything else is sent on "default" (an unknown channel id would
+# otherwise be dropped or shown without sound on Android 8+).
+ANDROID_CHANNELS = {"default", "tasks", "reminders", "events", "deployments", "support"}
+DEFAULT_CHANNEL = "default"
 
 # Outbox tuning.
 QUEUED, SENDING, SENT, FAILED, DEAD = "Queued", "Sending", "Sent", "Failed", "Dead"
@@ -294,10 +298,18 @@ def _payload(row):
 	except ValueError:
 		data = {}
 	payload = dict(data) if isinstance(data, dict) else {}
-	payload["app"] = row.app
+	# What the app needs to open the screen and mark this inbox row read on tap. These win over the caller's keys.
 	payload["notification"] = row.name
-	payload.setdefault("kind", row.kind)
+	payload["kind"] = row.kind or "event"
+	payload["app"] = row.app
+	if row.route:
+		payload["route"] = row.route
 	return payload
+
+
+def android_channel(channel):
+	"""The channel id to send on: one the apps create, else "default"."""
+	return channel if channel in ANDROID_CHANNELS else DEFAULT_CHANNEL
 
 
 def _valid_tokens(app, user):
@@ -324,7 +336,9 @@ def _send_rows(rows, post):
 		if not tokens:
 			outcome[row.name] = _mark_sent(row, [], NO_DEVICE)
 			continue
-		messages = build_messages(tokens, row.title, row.body, _payload(row), channel=row.channel, route=row.route)
+		messages = build_messages(
+			tokens, row.title, row.body, _payload(row), channel=android_channel(row.channel), route=row.route
+		)
 		by_app.setdefault(row.app, []).append((row, tokens, messages))
 	# One app's tokens belong to one Expo project; Expo refuses a request that mixes projects.
 	for items in by_app.values():

@@ -160,9 +160,38 @@ class TestDrain(NotificationTestBase):
 		self.assertEqual(sorted(m["to"] for m in expo.messages), sorted([TOKEN_A1, TOKEN_A2]))
 		msg = expo.messages[0]
 		self.assertEqual((msg["channelId"], msg["data"]["route"], msg["data"]["app"], msg["data"]["notification"]), ("events", "/deployments", APP, row.name))
-		self.assertEqual(msg["data"]["kind"], "event")
+		self.assertEqual(msg["data"]["kind"], "deployment")
 		self.assertEqual((row.status, row.attempts), ("Sent", 1))
 		self.assertEqual(sorted(json.loads(row.expo_ticket_ids)), sorted([f"ticket-{TOKEN_A1}", f"ticket-{TOKEN_A2}"]))
+
+	def test_message_data_carries_what_the_app_needs_to_mark_the_row_read(self):
+		self.token(self.user_a, TOKEN_A1)
+		self.notify(
+			route="/task/T-9", kind="task", channel="tasks", data={"task": "T-9", "kind": "stale", "notification": "x"}
+		)
+		self.notify(title="no route", route=None, kind="support", data={"issue": "ISS-1"})
+		self.notify(title="odd channel", channel="made-up")
+		frappe.db.commit()
+		expo = FakeExpo()
+		push.drain(post=expo)
+		by_title = {m["title"]: m for m in expo.messages}
+		names = {r.title: r.name for r in self.rows()}
+		self.assertEqual(
+			by_title["Deployment Deployed"]["data"],
+			{"task": "T-9", "notification": names["Deployment Deployed"], "kind": "task", "route": "/task/T-9", "app": APP},
+		)
+		self.assertEqual(by_title["Deployment Deployed"]["channelId"], "tasks")
+		# Without a route the support tag is kept, as before.
+		self.assertEqual(
+			by_title["no route"]["data"],
+			{"issue": "ISS-1", "notification": names["no route"], "kind": "support", "app": APP, "upande_mobile": "support"},
+		)
+		self.assertEqual(by_title["no route"]["channelId"], "support")
+		self.assertEqual(by_title["odd channel"]["channelId"], "default")
+		for channel in ("default", "tasks", "reminders", "events", "deployments", "support"):
+			self.assertEqual(push.android_channel(channel), channel)
+		for channel in (None, "", "Events", "made-up"):
+			self.assertEqual(push.android_channel(channel), "default")
 
 	def test_a_user_with_no_token_keeps_the_inbox_row_and_is_not_retried(self):
 		self.notify()
