@@ -254,7 +254,16 @@ def _ensure_app(app):
 	# A cap on what any signed-in account can create: past it an unknown name is refused.
 	if frappe.db.count(MOBILE_APP, {"enabled": 0}) >= MAX_UNKNOWN_APPS:
 		return None
-	frappe.get_doc({"doctype": MOBILE_APP, "app_name": app, "enabled": 0}).insert(ignore_permissions=True)
+	try:
+		frappe.get_doc({"doctype": MOBILE_APP, "app_name": app, "enabled": 0}).insert(ignore_permissions=True)
+	except (frappe.DuplicateEntryError, frappe.QueryDeadlockError):
+		# A second report for the same new app landed at the same moment (the app sends several
+		# on launch) and created the record first: use theirs rather than failing the request.
+		frappe.db.rollback()
+		stored = frappe.db.get_value(MOBILE_APP, app, "name")
+		if not stored:
+			raise
+		return stored
 	return app
 
 

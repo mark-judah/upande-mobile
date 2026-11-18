@@ -11,6 +11,10 @@ scheduler_events = {
 		"0 * * * *": ["upande_mobile.api.devices.refresh_latest"],
 		# Delete crash / API events past each app's retention (issues are kept).
 		"30 2 * * *": ["upande_mobile.api.monitor.purge_old_events"],
+		# Notification outbox: send due pushes, read Expo receipts, forget old inbox rows.
+		"* * * * *": ["upande_mobile.push.drain"],
+		"*/5 * * * *": ["upande_mobile.push.check_receipts"],
+		"15 3 * * *": ["upande_mobile.push.cleanup"],
 	},
 }
 

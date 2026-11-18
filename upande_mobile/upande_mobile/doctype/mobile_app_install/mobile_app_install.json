@@ -52,7 +52,9 @@
   "users",
   "it_section",
   "device_state",
-  "it_notes"
+  "it_notes",
+  "device_group",
+  "custodian"
  ],
  "fields": [
   {
@@ -330,11 +332,27 @@
    "fieldname": "it_notes",
    "fieldtype": "Small Text",
    "label": "IT Notes"
+  },
+  {
+   "fieldname": "device_group",
+   "fieldtype": "Data",
+   "label": "Device ID (merged)",
+   "read_only": 1,
+   "search_index": 1,
+   "description": "Shared by the installs IT has said are one physical device. The same id is stored on the linked Asset."
+  },
+  {
+   "fieldname": "custodian",
+   "fieldtype": "Link",
+   "label": "Custodian",
+   "options": "Employee",
+   "ignore_user_permissions": 1,
+   "description": "Who has this device, when it is not linked to an Asset (an Asset has its own custodian)."
   }
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-10-22 12:00:00.000000",
+ "modified": "2026-11-14 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Upande Mobile",
  "name": "Mobile App Install",
